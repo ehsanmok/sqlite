@@ -22,6 +22,7 @@ sqlite = "*"
 [feature.dev.dependencies]
 pre-commit = ">=4.2.0,<5"
 mojodoc = { git = "https://github.com/ehsanmok/mojodoc.git", branch = "main" }
+mozz = { git = "https://github.com/ehsanmok/mozz.git", branch = "main" }
 
 [environments]
 default = { features = ["dev"], solve-group = "default" }
@@ -34,9 +35,10 @@ format = { cmd = "mojo format mosqlite tests examples benchmark", depends-on = [
 format-check = "mojo format --check mosqlite tests examples benchmark"
 
 # Tests
-tests    = "mojo -I . tests/test_db.mojo && mojo -I . tests/test_orm.mojo"
-test-db  = "mojo -I . tests/test_db.mojo"
-test-orm = "mojo -I . tests/test_orm.mojo"
+tests     = "mojo -I . tests/test_db.mojo && mojo -I . tests/test_orm.mojo && mojo -I . tests/test_fuzz.mojo"
+test-db   = "mojo -I . tests/test_db.mojo"
+test-orm  = "mojo -I . tests/test_orm.mojo"
+test-fuzz = "mojo -I . tests/test_fuzz.mojo"
 
 # Examples (run individually or all at once)
 example-01 = "mojo -I . examples/01_hello_sqlite.mojo"
