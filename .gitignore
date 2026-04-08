@@ -1,0 +1,15 @@
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+*.lock
+
+# Build outputs
+target/
+
+# Mojo cache
+__pycache__/
+*.mojopkg
+
+# Editor / agent state
+.cursor/
+.agents/

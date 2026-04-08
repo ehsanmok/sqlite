@@ -1,0 +1,21 @@
+package:
+  name: mosqlite
+  version: "0.1.0"
+
+source:
+  path: .
+
+build:
+  script:
+    - mkdir -p $PREFIX/lib/mojo
+    - cp -r mosqlite $PREFIX/lib/mojo/
+
+requirements:
+  host:
+    - mojo <1.0
+  run:
+    - mojo <1.0
+
+about:
+  summary: SQLite bindings with morph ORM integration for Mojo
+  license: MIT
