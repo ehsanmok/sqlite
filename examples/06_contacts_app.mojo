@@ -6,13 +6,13 @@ A realistic, self-contained CRUD demo that combines everything:
 - Raw prepared statements for UPDATE and DELETE (not yet in the ORM layer).
 - ``Optional`` fields for nullable columns.
 - ``WHERE`` filtering via the ``query`` helper.
-- Transaction wrapping with ``BEGIN`` / ``COMMIT`` for bulk writes.
+- ``db.transaction()`` guard for atomic bulk writes.
 
 The application manages a simple contacts list: add contacts, update a phone
 number, delete a contact, then print a filtered directory.
 """
 
-from mosqlite.db import Database
+from mosqlite.db import Database, Transaction
 from mosqlite.orm import create_table, insert, query
 
 
@@ -76,32 +76,35 @@ def _print_contact(c: Contact):
 # ---------------------------------------------------------------------------
 
 
-def _seed_contacts(db: Database) raises:
+def _seed_contacts(mut db: Database) raises:
     """Insert initial contacts inside a transaction for atomicity."""
-    db.execute("BEGIN")
+    var tx = db.transaction()           # BEGIN
+    try:
+        var contacts = List[Contact]()
+        contacts.append(Contact(
+            id=1, name="Alice Nguyen", email="alice@example.com",
+            phone=Optional[String]("+1-415-555-0101"), active=True,
+        ))
+        contacts.append(Contact(
+            id=2, name="Bob Martínez", email="bob@example.com",
+            phone=None, active=True,
+        ))
+        contacts.append(Contact(
+            id=3, name="Carol Smith", email="carol@example.com",
+            phone=Optional[String]("+44-20-7946-0958"), active=True,
+        ))
+        contacts.append(Contact(
+            id=4, name="Dave Kim", email="dave@example.com",
+            phone=Optional[String]("+82-2-555-0199"), active=True,
+        ))
 
-    var contacts = List[Contact]()
-    contacts.append(Contact(
-        id=1, name="Alice Nguyen", email="alice@example.com",
-        phone=Optional[String]("+1-415-555-0101"), active=True,
-    ))
-    contacts.append(Contact(
-        id=2, name="Bob Martínez", email="bob@example.com",
-        phone=None, active=True,
-    ))
-    contacts.append(Contact(
-        id=3, name="Carol Smith", email="carol@example.com",
-        phone=Optional[String]("+44-20-7946-0958"), active=True,
-    ))
-    contacts.append(Contact(
-        id=4, name="Dave Kim", email="dave@example.com",
-        phone=Optional[String]("+82-2-555-0199"), active=True,
-    ))
+        for i in range(len(contacts)):
+            insert[Contact](db, "contacts", contacts[i])
 
-    for i in range(len(contacts)):
-        insert[Contact](db, "contacts", contacts[i])
-
-    db.execute("COMMIT")
+        tx.commit()                     # COMMIT — all contacts inserted atomically
+    except e:
+        tx.rollback()                   # ROLLBACK — no contacts inserted
+        raise e.copy()
 
 
 def _update_phone(db: Database, contact_id: Int, new_phone: String) raises:

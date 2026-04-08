@@ -1,4 +1,4 @@
-"""Unit tests for mosqlite.db -- Database, Statement, Row.
+"""Unit tests for mosqlite.db -- Database, Statement, Row, Transaction.
 
 Tests use an in-memory database (``:memory:``) for isolation and speed.
 
@@ -14,12 +14,35 @@ Coverage:
 - Statement reset and repeated reuse
 - Aggregate queries (COUNT)
 - DML: UPDATE and DELETE
-- Transactions: COMMIT and ROLLBACK
+- Transactions: low-level COMMIT / ROLLBACK via execute()
+- ``Transaction`` RAII guard: commit, explicit rollback, double-commit no-op
+- ``Transaction`` auto-rollback: changes not visible after guard is destroyed
+  without commit (simulates the exception-unwind case)
+- Multi-statement atomicity: one failing INSERT inside a transaction leaves
+  the table empty
 - Column count via ``num_cols``
 """
 
 from std.testing import assert_equal, assert_true, assert_false
-from mosqlite.db import Database, Row
+from mosqlite.db import Database, Row, Transaction
+from mosqlite.orm import create_table, insert, query as orm_query
+
+
+# Top-level struct for test_transaction_orm_atomicity (Mojo disallows
+# struct definitions inside def bodies).
+@fieldwise_init
+struct TxItem(Defaultable, Movable, Copyable):
+    """Test helper: a simple 2-field ORM struct used in transaction tests."""
+    var label: String
+    var qty: Int
+
+    def __init__(out self):
+        self.label = ""
+        self.qty = 0
+
+    def __init__(out self, *, copy: Self):
+        self.label = copy.label
+        self.qty = copy.qty
 
 
 # -----------------------------------------------------------------------
@@ -575,6 +598,203 @@ def test_transaction_rollback() raises:
     assert_equal(row.int_val(0), 0, "ROLLBACK should revert the INSERT")
 
 
+# Module-level helper: starts a transaction, inserts, then raises.
+# Being a separate function means its stack frame is torn down on raise,
+# which calls tx.__del__ (→ ROLLBACK) before the exception reaches the caller.
+def _tx_insert_then_raise(mut db: Database) raises:
+    var tx = db.transaction()           # BEGIN
+    db.execute("INSERT INTO t VALUES (99)")
+    raise Error("intentional test error")
+    tx.commit()  # unreachable
+
+
+# -----------------------------------------------------------------------
+# Transaction RAII guard
+# -----------------------------------------------------------------------
+
+
+def test_transaction_commit_guard() raises:
+    """``Transaction.commit()`` makes all changes permanently visible."""
+    var db = Database(":memory:")
+    db.execute("CREATE TABLE t (v INTEGER)")
+
+    var tx = db.transaction()   # BEGIN
+    db.execute("INSERT INTO t VALUES (1)")
+    db.execute("INSERT INTO t VALUES (2)")
+    tx.commit()                 # COMMIT
+
+    var q = db.prepare("SELECT COUNT(*) FROM t")
+    ref row = q.step().value()
+    assert_equal(row.int_val(0), 2, "Both rows should be committed")
+
+
+def test_transaction_explicit_rollback() raises:
+    """``Transaction.rollback()`` discards all changes."""
+    var db = Database(":memory:")
+    db.execute("CREATE TABLE t (v INTEGER)")
+
+    var tx = db.transaction()   # BEGIN
+    db.execute("INSERT INTO t VALUES (99)")
+    tx.rollback()               # explicit ROLLBACK
+
+    var q = db.prepare("SELECT COUNT(*) FROM t")
+    ref row = q.step().value()
+    assert_equal(row.int_val(0), 0, "Explicit rollback should revert INSERT")
+
+
+def test_transaction_destruction_without_commit_rolls_back() raises:
+    """A ``Transaction`` explicitly destroyed without ``commit()`` issues ROLLBACK.
+
+    In Mojo's ``def`` scoping rules, a ``var`` declared inside a ``try``
+    block lives until the end of the enclosing function, so we use ``_ = tx^``
+    to force immediate destruction and verify the ROLLBACK fires before the
+    subsequent count check.  In production, the equivalent occurs when a
+    function that owns the ``Transaction`` raises and its frame is torn down.
+    """
+    var db = Database(":memory:")
+    db.execute("CREATE TABLE t (v INTEGER)")
+
+    var tx = db.transaction()               # BEGIN
+    db.execute("INSERT INTO t VALUES (42)")
+    _ = tx^                                 # consume tx → __del__ → ROLLBACK
+
+    var q = db.prepare("SELECT COUNT(*) FROM t")
+    ref row = q.step().value()
+    assert_equal(row.int_val(0), 0, "Destroying tx without commit must ROLLBACK")
+
+
+def test_transaction_explicit_rollback_in_except() raises:
+    """Calling ``rollback()`` in an ``except`` handler reverts all changes.
+
+    In Mojo's ``def`` scoping, a ``var`` declared inside a ``try`` block
+    lives until the end of the enclosing function, so the RAII destructor
+    fires too late.  The idiomatic Mojo pattern is therefore:
+    ``var tx = db.transaction(); try: ...; tx.commit(); except: tx.rollback(); raise``.
+    This test verifies that explicit ``rollback()`` in the handler is sufficient.
+    """
+    var db = Database(":memory:")
+    db.execute("CREATE TABLE t (v INTEGER)")
+
+    var tx = db.transaction()           # BEGIN
+    try:
+        db.execute("INSERT INTO t VALUES (99)")
+        raise Error("intentional test error")
+        tx.commit()  # unreachable
+    except:
+        tx.rollback()  # explicit rollback in handler
+
+    var q = db.prepare("SELECT COUNT(*) FROM t")
+    ref row = q.step().value()
+    assert_equal(row.int_val(0), 0, "Explicit rollback in except must revert INSERT")
+
+
+def test_transaction_commit_is_idempotent() raises:
+    """Calling ``commit()`` twice is a no-op on the second call."""
+    var db = Database(":memory:")
+    db.execute("CREATE TABLE t (v INTEGER)")
+
+    var tx = db.transaction()
+    db.execute("INSERT INTO t VALUES (7)")
+    tx.commit()
+    tx.commit()  # second commit should not raise or double-commit
+
+    var q = db.prepare("SELECT COUNT(*) FROM t")
+    ref row = q.step().value()
+    assert_equal(row.int_val(0), 1)
+
+
+def test_transaction_rollback_after_commit_is_noop() raises:
+    """Calling ``rollback()`` after ``commit()`` is a no-op."""
+    var db = Database(":memory:")
+    db.execute("CREATE TABLE t (v INTEGER)")
+
+    var tx = db.transaction()
+    db.execute("INSERT INTO t VALUES (5)")
+    tx.commit()
+    tx.rollback()   # should not undo the already-committed data
+
+    var q = db.prepare("SELECT COUNT(*) FROM t")
+    ref row = q.step().value()
+    assert_equal(row.int_val(0), 1, "commit() then rollback() should not undo data")
+
+
+def test_transaction_atomicity_multiple_inserts() raises:
+    """All inserts in a committed transaction are visible; none if rolled back."""
+    var db = Database(":memory:")
+    db.execute("CREATE TABLE t (v INTEGER)")
+
+    # Commit path: all 5 rows should appear.
+    var tx1 = db.transaction()
+    for i in range(5):
+        db.execute("INSERT INTO t VALUES (" + String(i) + ")")
+    tx1.commit()
+
+    var q1 = db.prepare("SELECT COUNT(*) FROM t")
+    ref r1 = q1.step().value()
+    assert_equal(r1.int_val(0), 5, "All 5 rows should be committed")
+
+    # Rollback path: the 5 additional rows should not appear.
+    var tx2 = db.transaction()
+    for i in range(5):
+        db.execute("INSERT INTO t VALUES (" + String(i + 100) + ")")
+    tx2.rollback()
+
+    var q2 = db.prepare("SELECT COUNT(*) FROM t")
+    ref r2 = q2.step().value()
+    assert_equal(r2.int_val(0), 5, "Rolled-back rows must not appear")
+
+
+def test_transaction_error_leaves_table_empty() raises:
+    """``rollback()`` in an ``except`` handler reverts a partial INSERT.
+
+    We insert a valid row, then force a failure via a bad ``prepare()``.
+    Calling ``tx.rollback()`` in the handler reverts the valid insert, leaving
+    the table empty.
+    """
+    var db = Database(":memory:")
+    db.execute("CREATE TABLE real_table (v INTEGER)")
+
+    var tx = db.transaction()           # BEGIN
+    try:
+        db.execute("INSERT INTO real_table VALUES (1)")
+        var _ = db.prepare("SELECT * FROM no_such_table")  # raises
+        tx.commit()  # unreachable
+    except:
+        tx.rollback()  # explicit rollback
+
+    var q = db.prepare("SELECT COUNT(*) FROM real_table")
+    ref row = q.step().value()
+    assert_equal(row.int_val(0), 0, "rollback() in except must revert the valid INSERT")
+
+
+def test_transaction_orm_atomicity() raises:
+    """Two ORM inserts in a transaction are both committed or both rolled back."""
+    var db = Database(":memory:")
+    create_table[TxItem](db, "items")
+
+    # Success path: both ORM inserts committed.
+    var tx1 = db.transaction()
+    insert[TxItem](db, "items", TxItem(label="apple", qty=10))
+    insert[TxItem](db, "items", TxItem(label="banana", qty=20))
+    tx1.commit()
+
+    assert_equal(len(orm_query[TxItem](db, "items")), 2, "Both items should be committed")
+
+    # Rollback path: ORM insert + bad statement → explicit rollback.
+    var tx2 = db.transaction()
+    try:
+        insert[TxItem](db, "items", TxItem(label="cherry", qty=5))
+        var _ = db.prepare("SELECT * FROM nonexistent")  # raises
+        tx2.commit()  # unreachable
+    except:
+        tx2.rollback()  # explicit rollback in handler
+
+    assert_equal(
+        len(orm_query[TxItem](db, "items")), 2,
+        "cherry must not appear after rollback"
+    )
+
+
 # -----------------------------------------------------------------------
 # last_error
 # -----------------------------------------------------------------------
@@ -685,11 +905,31 @@ def main() raises:
     test_delete_statement()
     print("test_delete_statement                PASSED")
 
-    # Transactions
+    # Low-level transactions (execute)
     test_transaction_commit()
     print("test_transaction_commit              PASSED")
     test_transaction_rollback()
     print("test_transaction_rollback            PASSED")
+
+    # Transaction RAII guard
+    test_transaction_commit_guard()
+    print("test_transaction_commit_guard                       PASSED")
+    test_transaction_explicit_rollback()
+    print("test_transaction_explicit_rollback                  PASSED")
+    test_transaction_destruction_without_commit_rolls_back()
+    print("test_transaction_destruction_without_commit_rolls_back PASSED")
+    test_transaction_explicit_rollback_in_except()
+    print("test_transaction_explicit_rollback_in_except        PASSED")
+    test_transaction_commit_is_idempotent()
+    print("test_transaction_commit_is_idempotent               PASSED")
+    test_transaction_rollback_after_commit_is_noop()
+    print("test_transaction_rollback_after_commit_is_noop      PASSED")
+    test_transaction_atomicity_multiple_inserts()
+    print("test_transaction_atomicity_multiple_inserts         PASSED")
+    test_transaction_error_leaves_table_empty()
+    print("test_transaction_error_leaves_table_empty           PASSED")
+    test_transaction_orm_atomicity()
+    print("test_transaction_orm_atomicity                      PASSED")
 
     # last_error
     test_last_error_after_open()

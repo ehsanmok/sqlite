@@ -5,8 +5,9 @@
 **Layer 1 -- FFI** (``mosqlite.ffi``): raw ``sqlite3_*`` wrappers with
 handles stored as ``Int``.  Not intended for direct use.
 
-**Layer 2 -- Safe API** (``mosqlite.db``): ``Database``, ``Statement``, and
-``Row`` structs that own their handles and clean up on destruction.
+**Layer 2 -- Safe API** (``mosqlite.db``): ``Database``, ``Statement``,
+``Row``, and ``Transaction`` structs that own their handles and clean up on
+destruction.
 
 **Layer 3 -- ORM** (``mosqlite.orm``): ``create_table``, ``insert``, and
 ``query`` generic functions that use compile-time reflection (via
@@ -40,6 +41,33 @@ def main() raises:
         print(rows[i].name, rows[i].age, rows[i].score)
 ```
 
+## Transaction API (auto-rollback on error)
+
+``db.transaction()`` returns a ``Transaction`` guard that issues ``BEGIN``
+immediately.  Call ``commit()`` to persist; any exception or early return
+before ``commit()`` triggers an automatic ``ROLLBACK`` via the destructor --
+the Mojo equivalent of Python's ``with connection:`` block.
+
+```mojo
+from mosqlite import Database
+
+def transfer(db: Database, from_id: Int, to_id: Int, amount: Int) raises:
+    var tx = db.transaction()   # BEGIN
+    try:
+        db.execute(
+            "UPDATE accounts SET balance = balance - "
+            + String(amount) + " WHERE id = " + String(from_id)
+        )
+        db.execute(
+            "UPDATE accounts SET balance = balance + "
+            + String(amount) + " WHERE id = " + String(to_id)
+        )
+        tx.commit()             # COMMIT — both updates are now permanent.
+    except e:
+        tx.rollback()           # ROLLBACK — neither update is applied.
+        raise e
+```
+
 ## Raw statement API
 
 ```mojo
@@ -61,5 +89,5 @@ while True:
 ```
 """
 
-from .db import Database, Statement, Row
+from .db import Database, Statement, Row, Transaction
 from .orm import create_table, insert, query

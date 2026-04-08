@@ -1,12 +1,14 @@
 """Safe Mojo API for SQLite -- Layer 2.
 
-Provides three structs that wrap the raw FFI handles from ``ffi.mojo``:
+Provides four structs that wrap the raw FFI handles from ``ffi.mojo``:
 
-- ``Database`` -- owns a SQLite connection; closes it on destruction.
-- ``Statement`` -- owns a prepared statement; finalizes it on destruction.
-- ``Row`` -- a snapshot of a single result row (value types, not a borrow).
+- ``Database``    -- owns a SQLite connection; closes it on destruction.
+- ``Statement``   -- owns a prepared statement; finalizes it on destruction.
+- ``Row``         -- a snapshot of a single result row (value types, not a borrow).
+- ``Transaction`` -- RAII transaction guard; rolls back automatically unless
+                     ``commit()`` is called.
 
-Typical usage::
+**Basic usage**::
 
     var db = Database(":memory:")
     db.execute("CREATE TABLE t (id INTEGER, name TEXT)")
@@ -21,6 +23,13 @@ Typical usage::
         if not row:
             break
         print(row.value().int_val(0), row.value().text_val(1))
+
+**Transaction usage (auto-rollback on error)**::
+
+    var tx = db.transaction()       # issues BEGIN
+    db.execute("INSERT ...")
+    db.execute("INSERT ...")        # if this raises, tx is destroyed → ROLLBACK
+    tx.commit()                     # issues COMMIT; destructor becomes a no-op
 """
 
 from .ffi import (
@@ -47,6 +56,109 @@ from .ffi import (
     SQLITE_TEXT,
     SQLITE_NULL,
 )
+
+
+# -----------------------------------------------------------------------
+# Transaction
+# -----------------------------------------------------------------------
+
+
+struct Transaction(Movable):
+    """RAII transaction guard — automatically rolls back unless committed.
+
+    Obtain a ``Transaction`` via ``Database.transaction()``, which issues a
+    ``BEGIN`` immediately.  If ``commit()`` is called the changes are
+    persisted.  If the ``Transaction`` is destroyed before ``commit()`` —
+    whether by an exception unwinding the stack, an early ``return``, or
+    explicit ``rollback()`` — a ``ROLLBACK`` is issued automatically.
+
+    **Idiomatic Mojo usage pattern** — call ``rollback()`` explicitly in the
+    ``except`` handler (Mojo's ``def`` scoping keeps a ``var`` alive until the
+    end of the enclosing function, so the destructor fires too late to serve
+    as a Python-style ``with`` statement replacement):
+
+    .. code-block:: mojo
+
+        def transfer(db: Database, from_id: Int, to_id: Int, amount: Int) raises:
+            var tx = db.transaction()           # BEGIN
+            try:
+                db.execute("UPDATE accounts SET balance = balance - "
+                           + String(amount) + " WHERE id = " + String(from_id))
+                db.execute("UPDATE accounts SET balance = balance + "
+                           + String(amount) + " WHERE id = " + String(to_id))
+                tx.commit()                     # COMMIT on success
+            except e:
+                tx.rollback()                   # ROLLBACK on any error
+                raise e                         # re-raise to caller
+
+    Alternatively, to abandon a transaction at a known point without raising,
+    use ``_ = tx^`` to consume (and immediately destroy) the guard:
+
+    .. code-block:: mojo
+
+        var tx = db.transaction()
+        db.execute("INSERT ...")
+        _ = tx^                                 # guard destroyed → ROLLBACK
+
+    Note:
+        Nested transactions are not supported by SQLite's
+        ``BEGIN``/``COMMIT`` protocol.  Use ``SAVEPOINT`` directly if you
+        need nesting.
+    """
+
+    var _handle: Int   # sqlite3 connection handle (non-owning borrow)
+    var _done: Bool    # True after commit() or rollback(); silences __del__
+
+    def __init__(out self, handle: Int) raises:
+        """Begin a new transaction on ``handle``.
+
+        Args:
+            handle: Open ``sqlite3*`` connection handle.
+
+        Raises:
+            Error: If ``BEGIN`` fails (e.g. a transaction is already active).
+        """
+        self._handle = handle
+        self._done   = False
+        _sqlite3_exec(handle, "BEGIN")
+
+    def __del__(deinit self):
+        """Issue ``ROLLBACK`` if the transaction was neither committed nor rolled back.
+
+        Errors from the implicit ``ROLLBACK`` are swallowed so destructors
+        never raise.
+        """
+        if not self._done:
+            try:
+                _sqlite3_exec(self._handle, "ROLLBACK")
+            except:
+                pass
+
+    def commit(mut self) raises:
+        """Commit the transaction and make all changes permanent.
+
+        After this call the destructor becomes a no-op.
+
+        Raises:
+            Error: If ``COMMIT`` fails.
+        """
+        if not self._done:
+            _sqlite3_exec(self._handle, "COMMIT")
+            self._done = True
+
+    def rollback(mut self) raises:
+        """Explicitly roll back the transaction.
+
+        Useful when you detect a logical error and want to abort early
+        without raising an exception.  After this call the destructor
+        becomes a no-op.
+
+        Raises:
+            Error: If ``ROLLBACK`` fails.
+        """
+        if not self._done:
+            _sqlite3_exec(self._handle, "ROLLBACK")
+            self._done = True
 
 
 # -----------------------------------------------------------------------
@@ -327,6 +439,29 @@ struct Database(Movable):
             Error: If the SQL fails to compile.
         """
         return Statement(self._handle, sql)
+
+    def transaction(self) raises -> Transaction:
+        """Begin a new transaction and return an RAII guard.
+
+        The guard issues ``BEGIN`` immediately.  Call ``commit()`` on the
+        returned ``Transaction`` to persist changes.  If the guard is
+        destroyed before ``commit()`` (exception, early return, or explicit
+        ``rollback()``), a ``ROLLBACK`` is issued automatically.
+
+        Returns:
+            A new ``Transaction`` with ``BEGIN`` already executed.
+
+        Raises:
+            Error: If ``BEGIN`` fails (e.g. a transaction is already open).
+
+        Example::
+
+            var tx = db.transaction()
+            db.execute("INSERT INTO orders VALUES (1, 'Alice')")
+            db.execute("INSERT INTO line_items VALUES (1, 42, 3)")
+            tx.commit()   # both rows committed atomically
+        """
+        return Transaction(self._handle)
 
     def last_error(self) -> String:
         """Return the most recent error message for this connection.
