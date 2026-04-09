@@ -39,6 +39,14 @@ Provides four structs that wrap the raw FFI handles from ``ffi.mojo``:
     tx.commit()                     # issues COMMIT; destructor becomes a no-op
 """
 
+from std.ffi import OwnedDLHandle
+from std.sys.info import CompilationTarget
+
+# Platform-specific shared library name for sqlite3.
+# On Linux the conda env provides libsqlite3.so.0 via LD_LIBRARY_PATH; on
+# macOS the system library is always available via dyld.
+alias _SQLITE_LIB = "libsqlite3.so.0" if CompilationTarget.is_linux() else "libsqlite3.dylib"
+
 from .ffi import (
     SQLITE_ROW,
     _sqlite3_open,
@@ -453,6 +461,7 @@ struct Database(Movable):
     """
 
     var _handle: Int
+    var _lib: OwnedDLHandle  # keeps libsqlite3 loaded so external_call resolves on Linux JIT
 
     def __init__(out self, path: String) raises:
         """Open or create a SQLite database.
@@ -461,8 +470,11 @@ struct Database(Movable):
             path: File-system path to the database, or ``:memory:``.
 
         Raises:
-            Error: If ``sqlite3_open`` fails.
+            Error: If ``sqlite3_open`` fails or the shared library cannot be loaded.
         """
+        # dlopen with RTLD.GLOBAL (the default) makes sqlite3 symbols available
+        # to Mojo's JIT linker, which does not honour -Xlinker in interpreter mode.
+        self._lib = OwnedDLHandle(_SQLITE_LIB)
         self._handle = _sqlite3_open(path)
 
     def __del__(deinit self):

@@ -25,7 +25,7 @@ mojodoc = { git = "https://github.com/ehsanmok/mojodoc.git", branch = "main" }
 mozz = { git = "https://github.com/ehsanmok/mozz.git", branch = "main" }
 
 [activation]
-env = { MOJO_FLAGS = "-I . -Xlinker -lsqlite3" }
+env = { MOJO_FLAGS = "-I ." }
 
 [environments]
 default = { features = ["dev"], solve-group = "default" }
