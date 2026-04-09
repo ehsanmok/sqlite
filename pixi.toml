@@ -17,12 +17,15 @@ backend = { name = "pixi-build-rattler-build", version = "*" }
 mosqlite = { path = "." }
 mojo = "<1.0"
 morph = { git = "https://github.com/ehsanmok/morph.git", branch = "main" }
-sqlite = "*"
+sqlite = ">=3.45"
 
 [feature.dev.dependencies]
 pre-commit = ">=4.2.0,<5"
 mojodoc = { git = "https://github.com/ehsanmok/mojodoc.git", branch = "main" }
 mozz = { git = "https://github.com/ehsanmok/mozz.git", branch = "main" }
+
+[activation]
+env = { MOJO_FLAGS = "-I . -Xlinker -lsqlite3" }
 
 [environments]
 default = { features = ["dev"], solve-group = "default" }
@@ -35,23 +38,23 @@ format = { cmd = "mojo format mosqlite tests examples benchmark", depends-on = [
 format-check = "mojo format --check mosqlite tests examples benchmark"
 
 # Tests
-tests     = "mojo -I . tests/test_db.mojo && mojo -I . tests/test_orm.mojo && mojo -I . tests/test_fuzz.mojo"
-test-db   = "mojo -I . tests/test_db.mojo"
-test-orm  = "mojo -I . tests/test_orm.mojo"
-test-fuzz = "mojo -I . tests/test_fuzz.mojo"
+tests     = "mojo $MOJO_FLAGS tests/test_db.mojo && mojo $MOJO_FLAGS tests/test_orm.mojo && mojo $MOJO_FLAGS tests/test_fuzz.mojo"
+test-db   = "mojo $MOJO_FLAGS tests/test_db.mojo"
+test-orm  = "mojo $MOJO_FLAGS tests/test_orm.mojo"
+test-fuzz = "mojo $MOJO_FLAGS tests/test_fuzz.mojo"
 
 # Examples (run individually or all at once)
-example-01 = "mojo -I . examples/01_hello_sqlite.mojo"
-example-02 = "mojo -I . examples/02_prepared_statements.mojo"
-example-03 = "mojo -I . examples/03_all_types.mojo"
-example-04 = "mojo -I . examples/04_orm_basics.mojo"
-example-05 = "mojo -I . examples/05_orm_optional.mojo"
-example-06 = "mojo -I . examples/06_contacts_app.mojo"
-example-07 = "mojo -I . examples/07_transactions.mojo"
+example-01 = "mojo $MOJO_FLAGS examples/01_hello_sqlite.mojo"
+example-02 = "mojo $MOJO_FLAGS examples/02_prepared_statements.mojo"
+example-03 = "mojo $MOJO_FLAGS examples/03_all_types.mojo"
+example-04 = "mojo $MOJO_FLAGS examples/04_orm_basics.mojo"
+example-05 = "mojo $MOJO_FLAGS examples/05_orm_optional.mojo"
+example-06 = "mojo $MOJO_FLAGS examples/06_contacts_app.mojo"
+example-07 = "mojo $MOJO_FLAGS examples/07_transactions.mojo"
 examples   = { depends-on = ["example-01", "example-02", "example-03", "example-04", "example-05", "example-06", "example-07"] }
 
 # Benchmark
-bench = "mojo -I . benchmark/bench.mojo"
+bench = "mojo $MOJO_FLAGS benchmark/bench.mojo"
 
 # Docs
 docs       = "mojodoc ./mosqlite --open"
