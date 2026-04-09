@@ -13,3 +13,4 @@ __pycache__/
 # Editor / agent state
 .cursor/
 .agents/
+.pnpm-store/

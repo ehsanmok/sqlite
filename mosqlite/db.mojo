@@ -24,14 +24,14 @@ Provides four structs that wrap the raw FFI handles from ``ffi.mojo``:
             break
         print(row.value().int_val(0), row.value().text_val(1))
 
-**Transaction usage — context manager (recommended)**::
+**Transaction usage -- context manager (recommended)**::
 
     with db.transaction():
         db.execute("INSERT INTO orders VALUES (1, 'Alice')")
         db.execute("INSERT INTO line_items VALUES (1, 42, 3)")
-    # → COMMIT on clean exit; ROLLBACK if any statement raises
+    # -> COMMIT on clean exit; ROLLBACK if any statement raises
 
-**Transaction usage — manual control**::
+**Transaction usage -- manual control**::
 
     var tx = db.transaction()       # issues BEGIN
     db.execute("INSERT ...")
@@ -39,33 +39,9 @@ Provides four structs that wrap the raw FFI handles from ``ffi.mojo``:
     tx.commit()                     # issues COMMIT; destructor becomes a no-op
 """
 
-from std.ffi import OwnedDLHandle
-from std.sys.info import CompilationTarget
-
-# Platform-specific shared library name for sqlite3.
-# On Linux the conda env provides libsqlite3.so.0 via LD_LIBRARY_PATH; on
-# macOS the system library is always available via dyld.
-alias _SQLITE_LIB = "libsqlite3.so.0" if CompilationTarget.is_linux() else "libsqlite3.dylib"
-
 from .ffi import (
+    Sqlite3FFI,
     SQLITE_ROW,
-    _sqlite3_open,
-    _sqlite3_close,
-    _sqlite3_errmsg,
-    _sqlite3_exec,
-    _sqlite3_prepare_v2,
-    _sqlite3_step,
-    _sqlite3_reset,
-    _sqlite3_finalize,
-    _sqlite3_bind_int,
-    _sqlite3_bind_double,
-    _sqlite3_bind_text,
-    _sqlite3_bind_null,
-    _sqlite3_column_count,
-    _sqlite3_column_type,
-    _sqlite3_column_int,
-    _sqlite3_column_double,
-    _sqlite3_column_text,
     SQLITE_INTEGER,
     SQLITE_FLOAT,
     SQLITE_TEXT,
@@ -79,30 +55,30 @@ from .ffi import (
 
 
 struct Transaction(Movable):
-    """RAII transaction guard — ``with`` block commits on success, rolls back on error.
+    """RAII transaction guard -- ``with`` block commits on success, rolls back on error.
 
     Obtain a ``Transaction`` via ``Database.transaction()``, which issues
     ``BEGIN`` immediately.
 
-    **Context-manager usage (recommended)** — identical to Python's
+    **Context-manager usage (recommended)** -- identical to Python's
     ``with conn:`` pattern::
 
         with db.transaction():
             db.execute("INSERT INTO orders VALUES (1, 'Alice')")
             db.execute("INSERT INTO line_items VALUES (1, 42, 3)")
-        # → COMMIT issued automatically; both rows written atomically
+        # -> COMMIT issued automatically; both rows written atomically
 
     If any statement inside raises, ``ROLLBACK`` is issued and the original
     exception propagates::
 
         with db.transaction():
             db.execute("INSERT INTO t VALUES (1)")
-            raise Error("oops")     # → __exit__(err) → ROLLBACK, re-raised
+            raise Error("oops")     # -> __exit__(err) -> ROLLBACK, re-raised
 
-    **Manual usage (fine-grained control)** — use ``var tx`` when you need
+    **Manual usage (fine-grained control)** -- use ``var tx`` when you need
     explicit guard access (conditional rollback, multiple commit points).
     Note: Mojo's ``with``/``__exit__`` protocol requires a non-consuming
-    ``__enter__``, so ``with ... as tx:`` binds ``tx`` to ``None`` — use
+    ``__enter__``, so ``with ... as tx:`` binds ``tx`` to ``None`` -- use
     ``var tx`` instead::
 
         var tx = db.transaction()   # BEGIN
@@ -115,15 +91,16 @@ struct Transaction(Movable):
     To abandon without raising, consume the guard immediately::
 
         var tx = db.transaction()
-        _ = tx^                     # guard destroyed → immediate ROLLBACK
+        _ = tx^                     # guard destroyed -> immediate ROLLBACK
 
     Note:
         Nested transactions are not supported via ``BEGIN``/``COMMIT``.
         Use ``SAVEPOINT`` directly if you need nesting.
     """
 
+    var _ffi:    Sqlite3FFI
     var _handle: Int   # sqlite3 connection handle (non-owning borrow)
-    var _done: Bool    # True after commit() or rollback(); silences __del__
+    var _done:   Bool  # True after commit() or rollback(); silences __del__
 
     def __init__(out self, handle: Int) raises:
         """Begin a new transaction on ``handle``.
@@ -134,9 +111,10 @@ struct Transaction(Movable):
         Raises:
             Error: If ``BEGIN`` fails (e.g. a transaction is already active).
         """
+        self._ffi    = Sqlite3FFI()
         self._handle = handle
         self._done   = False
-        _sqlite3_exec(handle, "BEGIN")
+        self._ffi.exec(handle, "BEGIN")
 
     def __del__(deinit self):
         """Issue ``ROLLBACK`` if the transaction was neither committed nor rolled back.
@@ -146,7 +124,7 @@ struct Transaction(Movable):
         """
         if not self._done:
             try:
-                _sqlite3_exec(self._handle, "ROLLBACK")
+                self._ffi.exec(self._handle, "ROLLBACK")
             except:
                 pass
 
@@ -159,7 +137,7 @@ struct Transaction(Movable):
             Error: If ``COMMIT`` fails.
         """
         if not self._done:
-            _sqlite3_exec(self._handle, "COMMIT")
+            self._ffi.exec(self._handle, "COMMIT")
             self._done = True
 
     def rollback(mut self) raises:
@@ -173,7 +151,7 @@ struct Transaction(Movable):
             Error: If ``ROLLBACK`` fails.
         """
         if not self._done:
-            _sqlite3_exec(self._handle, "ROLLBACK")
+            self._ffi.exec(self._handle, "ROLLBACK")
             self._done = True
 
     # ------------------------------------------------------------------
@@ -217,7 +195,7 @@ struct Transaction(Movable):
             err: The exception raised inside the ``with`` block.
 
         Returns:
-            ``False`` — always re-raises the caller's exception.
+            ``False`` -- always re-raises the caller's exception.
         """
         try:
             self.rollback()
@@ -240,43 +218,34 @@ struct Row(Movable):
     Column indices are 0-based throughout.
     """
 
-    var _ncols: Int
-    var _types: List[Int]
-    var _ints:  List[Int]
+    var _ncols:  Int
+    var _types:  List[Int]
+    var _ints:   List[Int]
     var _floats: List[Float64]
     var _texts:  List[String]
 
-    def __init__(out self, stmt: Int):
-        """Snapshot all column values from a statement at its current position.
+    def __init__(
+        out self,
+        ncols: Int,
+        types: List[Int],
+        ints: List[Int],
+        floats: List[Float64],
+        texts: List[String],
+    ):
+        """Construct a ``Row`` from pre-read column snapshots.
 
         Args:
-            stmt: sqlite3_stmt handle pointing at a ``SQLITE_ROW``.
+            ncols:  Number of columns.
+            types:  Per-column SQLite type codes.
+            ints:   Per-column integer values (0 for non-integer columns).
+            floats: Per-column float values (0.0 for non-float columns).
+            texts:  Per-column text values (empty for non-text columns).
         """
-        self._ncols = _sqlite3_column_count(stmt)
-        self._types  = List[Int]()
-        self._ints   = List[Int]()
-        self._floats = List[Float64]()
-        self._texts  = List[String]()
-
-        for col in range(self._ncols):
-            var t = Int(_sqlite3_column_type(stmt, col))
-            self._types.append(t)
-            if t == SQLITE_INTEGER:
-                self._ints.append(_sqlite3_column_int(stmt, col))
-                self._floats.append(Float64(0))
-                self._texts.append(String(""))
-            elif t == SQLITE_FLOAT:
-                self._ints.append(0)
-                self._floats.append(_sqlite3_column_double(stmt, col))
-                self._texts.append(String(""))
-            elif t == SQLITE_TEXT:
-                self._ints.append(0)
-                self._floats.append(Float64(0))
-                self._texts.append(_sqlite3_column_text(stmt, col))
-            else:  # NULL or BLOB
-                self._ints.append(0)
-                self._floats.append(Float64(0))
-                self._texts.append(String(""))
+        self._ncols  = ncols
+        self._types  = types.copy()
+        self._ints   = ints.copy()
+        self._floats = floats.copy()
+        self._texts  = texts.copy()
 
     def num_cols(self) -> Int:
         """Return the number of columns in this row.
@@ -343,6 +312,7 @@ struct Statement(Movable):
     Parameters use 1-based indexing (as in the SQLite C API).
     """
 
+    var _ffi:    Sqlite3FFI
     var _db:     Int
     var _handle: Int
 
@@ -356,12 +326,13 @@ struct Statement(Movable):
         Raises:
             Error: If the SQL fails to compile.
         """
+        self._ffi    = Sqlite3FFI()
         self._db     = db
-        self._handle = _sqlite3_prepare_v2(db, sql)
+        self._handle = self._ffi.prepare_v2(db, sql)
 
     def __del__(deinit self):
         """Finalize the statement and release its resources."""
-        _sqlite3_finalize(self._handle)
+        self._ffi.finalize(self._handle)
 
     def reset(self) raises:
         """Reset the statement so it can be re-executed.
@@ -369,11 +340,11 @@ struct Statement(Movable):
         Raises:
             Error: If the reset call fails.
         """
-        var rc = _sqlite3_reset(self._handle)
+        var rc = self._ffi.reset(self._handle)
         if rc != 0:
             raise Error("sqlite3_reset failed (rc=" + String(Int(rc)) + ")")
 
-    # --- parameter binding -----------------------------------------------
+    # -- parameter binding ---------------------------------------------------
 
     def bind_int(self, idx: Int, val: Int) raises:
         """Bind an integer value to parameter ``idx``.
@@ -385,7 +356,7 @@ struct Statement(Movable):
         Raises:
             Error: On binding failure.
         """
-        _sqlite3_bind_int(self._handle, idx, val)
+        self._ffi.bind_int(self._handle, idx, val)
 
     def bind_float(self, idx: Int, val: Float64) raises:
         """Bind a floating-point value to parameter ``idx``.
@@ -397,7 +368,7 @@ struct Statement(Movable):
         Raises:
             Error: On binding failure.
         """
-        _sqlite3_bind_double(self._handle, idx, val)
+        self._ffi.bind_double(self._handle, idx, val)
 
     def bind_text(self, idx: Int, val: String) raises:
         """Bind a text value to parameter ``idx``.
@@ -409,7 +380,7 @@ struct Statement(Movable):
         Raises:
             Error: On binding failure.
         """
-        _sqlite3_bind_text(self._handle, idx, val)
+        self._ffi.bind_text(self._handle, idx, val)
 
     def bind_null(self, idx: Int):
         """Bind SQL NULL to parameter ``idx``.
@@ -417,12 +388,15 @@ struct Statement(Movable):
         Args:
             idx: 1-based parameter index.
         """
-        _sqlite3_bind_null(self._handle, idx)
+        self._ffi.bind_null(self._handle, idx)
 
-    # --- execution -------------------------------------------------------
+    # -- execution -----------------------------------------------------------
 
     def step(self) raises -> Optional[Row]:
         """Advance the statement by one step.
+
+        Reads all column values into a ``Row`` snapshot when a row is
+        available, so the caller does not need to keep the statement alive.
 
         Returns:
             ``Some(Row)`` when a result row is available,
@@ -431,14 +405,38 @@ struct Statement(Movable):
         Raises:
             Error: If ``sqlite3_step`` returns an error code.
         """
-        var rc = _sqlite3_step(self._handle)
+        var rc = self._ffi.step(self._handle)
         if rc == SQLITE_ROW:
-            return Row(self._handle)
+            var ncols  = self._ffi.column_count(self._handle)
+            var types  = List[Int]()
+            var ints   = List[Int]()
+            var floats = List[Float64]()
+            var texts  = List[String]()
+            for col in range(ncols):
+                var t = self._ffi.column_type(self._handle, col)
+                types.append(t)
+                if t == SQLITE_INTEGER:
+                    ints.append(self._ffi.column_int(self._handle, col))
+                    floats.append(Float64(0))
+                    texts.append(String(""))
+                elif t == SQLITE_FLOAT:
+                    ints.append(0)
+                    floats.append(self._ffi.column_double(self._handle, col))
+                    texts.append(String(""))
+                elif t == SQLITE_TEXT:
+                    ints.append(0)
+                    floats.append(Float64(0))
+                    texts.append(self._ffi.column_text(self._handle, col))
+                else:  # NULL or BLOB
+                    ints.append(0)
+                    floats.append(Float64(0))
+                    texts.append(String(""))
+            return Row(ncols, types, ints, floats, texts)
         if Int(rc) == 101:  # SQLITE_DONE
             return None
         raise Error(
             "sqlite3_step failed (rc=" + String(Int(rc)) + "): "
-            + _sqlite3_errmsg(self._db)
+            + self._ffi.errmsg(self._db)
         )
 
 
@@ -460,8 +458,8 @@ struct Database(Movable):
         db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
     """
 
+    var _ffi:    Sqlite3FFI
     var _handle: Int
-    var _lib: OwnedDLHandle  # keeps libsqlite3 loaded so external_call resolves on Linux JIT
 
     def __init__(out self, path: String) raises:
         """Open or create a SQLite database.
@@ -470,16 +468,14 @@ struct Database(Movable):
             path: File-system path to the database, or ``:memory:``.
 
         Raises:
-            Error: If ``sqlite3_open`` fails or the shared library cannot be loaded.
+            Error: If ``sqlite3_open`` fails.
         """
-        # dlopen with RTLD.GLOBAL (the default) makes sqlite3 symbols available
-        # to Mojo's JIT linker, which does not honour -Xlinker in interpreter mode.
-        self._lib = OwnedDLHandle(_SQLITE_LIB)
-        self._handle = _sqlite3_open(path)
+        self._ffi    = Sqlite3FFI()
+        self._handle = self._ffi.open(path)
 
     def __del__(deinit self):
         """Close the database connection."""
-        _ = _sqlite3_close(self._handle)
+        _ = self._ffi.close(self._handle)
 
     def execute(self, sql: String) raises:
         """Execute one or more SQL statements with no result rows.
@@ -493,7 +489,7 @@ struct Database(Movable):
         Raises:
             Error: If ``sqlite3_exec`` fails.
         """
-        _sqlite3_exec(self._handle, sql)
+        self._ffi.exec(self._handle, sql)
 
     def prepare(self, sql: String) raises -> Statement:
         """Compile a SQL statement for repeated execution.
@@ -538,4 +534,4 @@ struct Database(Movable):
         Returns:
             Human-readable error string from ``sqlite3_errmsg``.
         """
-        return _sqlite3_errmsg(self._handle)
+        return self._ffi.errmsg(self._handle)

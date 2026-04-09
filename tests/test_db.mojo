@@ -607,8 +607,8 @@ def test_transaction_rollback() raises:
 def _tx_insert_then_raise(mut db: Database) raises:
     var tx = db.transaction()           # BEGIN
     db.execute("INSERT INTO t VALUES (99)")
+    _ = tx^  # ensure tx is consumed before raise
     raise Error("intentional test error")
-    tx.commit()  # unreachable
 
 
 # -----------------------------------------------------------------------
@@ -682,7 +682,6 @@ def test_transaction_explicit_rollback_in_except() raises:
     try:
         db.execute("INSERT INTO t VALUES (99)")
         raise Error("intentional test error")
-        tx.commit()  # unreachable
     except:
         tx.rollback()  # explicit rollback in handler
 

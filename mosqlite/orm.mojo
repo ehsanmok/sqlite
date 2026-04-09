@@ -107,7 +107,7 @@ def create_table[T: Morphable](db: Database, table: String) raises:
         if sql_type != "":
             if not first:
                 col_defs += ", "
-            col_defs += String(field_name) + " " + sql_type
+            col_defs += "\"" + String(field_name) + "\" " + sql_type
             first = False
 
     var sql = "CREATE TABLE IF NOT EXISTS " + table + " (" + col_defs + ")"
@@ -150,7 +150,7 @@ def insert[T: Morphable](db: Database, table: String, value: T) raises:
             if not first:
                 col_list += ", "
                 ph_list  += ", "
-            col_list += String(field_name)
+            col_list += "\"" + String(field_name) + "\""
             ph_list  += "?"
             first = False
 
