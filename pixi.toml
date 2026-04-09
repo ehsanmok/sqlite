@@ -47,7 +47,8 @@ example-03 = "mojo -I . examples/03_all_types.mojo"
 example-04 = "mojo -I . examples/04_orm_basics.mojo"
 example-05 = "mojo -I . examples/05_orm_optional.mojo"
 example-06 = "mojo -I . examples/06_contacts_app.mojo"
-examples   = { depends-on = ["example-01", "example-02", "example-03", "example-04", "example-05", "example-06"] }
+example-07 = "mojo -I . examples/07_transactions.mojo"
+examples   = { depends-on = ["example-01", "example-02", "example-03", "example-04", "example-05", "example-06", "example-07"] }
 
 # Benchmark
 bench = "mojo -I . benchmark/bench.mojo"
