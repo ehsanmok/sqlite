@@ -1,6 +1,6 @@
 """Example 1 — Hello, SQLite.
 
-The simplest possible mosqlite program:
+The simplest possible sqlite program:
 
 1. Open an in-memory database.
 2. Create a table.
@@ -8,10 +8,10 @@ The simplest possible mosqlite program:
 4. Read the row back with a prepared ``SELECT``.
 
 No ORM, no binding — just raw SQL strings.  This is the right starting point
-when you want to understand what mosqlite wraps.
+when you want to understand what sqlite wraps.
 """
 
-from mosqlite.db import Database
+from sqlite.db import Database
 
 
 def main() raises:

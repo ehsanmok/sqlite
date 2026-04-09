@@ -12,8 +12,8 @@ The application manages a simple contacts list: add contacts, update a phone
 number, delete a contact, then print a filtered directory.
 """
 
-from mosqlite.db import Database, Transaction
-from mosqlite.orm import create_table, insert, query
+from sqlite.db import Database, Transaction
+from sqlite.orm import create_table, insert, query
 
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-"""Unit tests for mosqlite.orm -- create_table, insert, query.
+"""Unit tests for sqlite.orm -- create_table, insert, query.
 
 Uses in-memory databases (``:memory:``) and simple ``@fieldwise_init`` structs.
 
@@ -15,8 +15,8 @@ Coverage:
 """
 
 from std.testing import assert_equal, assert_true, assert_false
-from mosqlite.db import Database
-from mosqlite.orm import create_table, insert, query
+from sqlite.db import Database
+from sqlite.orm import create_table, insert, query
 
 
 # ---------------------------------------------------------------------------

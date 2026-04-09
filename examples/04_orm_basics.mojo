@@ -23,8 +23,8 @@ Structs must satisfy ``Defaultable & Movable & Copyable``:
 constructor and the copy constructor must be written by hand (Mojo limitation).
 """
 
-from mosqlite.db import Database
-from mosqlite.orm import create_table, insert, query
+from sqlite.db import Database
+from sqlite.orm import create_table, insert, query
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +75,7 @@ struct Book(Defaultable, Movable, Copyable):
 def main() raises:
     var db = Database(":memory:")
 
-    # One call — mosqlite inspects Book at *compile time* and runs:
+    # One call — sqlite inspects Book at *compile time* and runs:
     #   CREATE TABLE IF NOT EXISTS books
     #     (title TEXT, author TEXT, year INTEGER, rating REAL, in_stock INTEGER)
     create_table[Book](db, "books")

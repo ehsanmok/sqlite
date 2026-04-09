@@ -1,15 +1,15 @@
 """SQLite bindings with morph ORM integration for Mojo.
 
-``mosqlite`` provides three layers of abstraction over the SQLite C library:
+``sqlite`` provides three layers of abstraction over the SQLite C library:
 
-**Layer 1 -- FFI** (``mosqlite.ffi``): raw ``sqlite3_*`` wrappers with
+**Layer 1 -- FFI** (``sqlite.ffi``): raw ``sqlite3_*`` wrappers with
 handles stored as ``Int``.  Not intended for direct use.
 
-**Layer 2 -- Safe API** (``mosqlite.db``): ``Database``, ``Statement``,
+**Layer 2 -- Safe API** (``sqlite.db``): ``Database``, ``Statement``,
 ``Row``, and ``Transaction`` structs that own their handles and clean up on
 destruction.
 
-**Layer 3 -- ORM** (``mosqlite.orm``): ``create_table``, ``insert``, and
+**Layer 3 -- ORM** (``sqlite.orm``): ``create_table``, ``insert``, and
 ``query`` generic functions that use compile-time reflection (via
 `morph <https://github.com/ehsanmok/morph>`_) to map Mojo structs directly to
 SQLite tables.
@@ -17,7 +17,7 @@ SQLite tables.
 ## Quick Start
 
 ```mojo
-from mosqlite import Database, create_table, insert, query
+from sqlite import Database, create_table, insert, query
 
 @fieldwise_init
 struct Person(Defaultable, Movable):
@@ -41,14 +41,14 @@ def main() raises:
         print(rows[i].name, rows[i].age, rows[i].score)
 ```
 
-## Transaction API — context manager (recommended)
+## Transaction API -- context manager (recommended)
 
 ``db.transaction()`` supports Mojo's ``with`` statement.  The ``with`` block
 auto-commits on clean exit and auto-rolls back (re-raising) if any statement
-raises — identical to Python's ``with conn:`` pattern.
+raises -- identical to Python's ``with conn:`` pattern.
 
 ```mojo
-from mosqlite import Database
+from sqlite import Database
 
 def transfer(db: Database, from_id: Int, to_id: Int, amount: Int) raises:
     with db.transaction():
@@ -60,13 +60,13 @@ def transfer(db: Database, from_id: Int, to_id: Int, amount: Int) raises:
             "UPDATE accounts SET balance = balance + "
             + String(amount) + " WHERE id = " + String(to_id)
         )
-    # → COMMIT on success; ROLLBACK + re-raise if either UPDATE failed
+    # -> COMMIT on success; ROLLBACK + re-raise if either UPDATE failed
 ```
 
 For fine-grained control (conditional rollback without raising, multiple
 commit points), use the ``var tx`` manual form.  Note: Mojo's
 ``with``/``__exit__`` protocol requires a non-consuming ``__enter__``, so
-``with ... as tx:`` would bind ``tx`` to ``None`` — use ``var tx`` instead:
+``with ... as tx:`` would bind ``tx`` to ``None`` -- use ``var tx`` instead:
 
 ```mojo
 var tx = db.transaction()   # BEGIN
@@ -80,7 +80,7 @@ tx.commit()                 # explicit COMMIT
 ## Raw statement API
 
 ```mojo
-from mosqlite import Database
+from sqlite import Database
 
 var db = Database(":memory:")
 db.execute("CREATE TABLE t (id INTEGER, label TEXT)")

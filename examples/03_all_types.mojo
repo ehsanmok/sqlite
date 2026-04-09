@@ -1,7 +1,7 @@
 """Example 3 — All SQLite storage classes.
 
 SQLite has five storage classes: NULL, INTEGER, REAL, TEXT, BLOB.
-mosqlite exposes four of them (BLOB support is future work).
+sqlite exposes four of them (BLOB support is future work).
 
 This example:
 
@@ -14,7 +14,7 @@ for columns that are NULL or of a different type; use ``is_null`` to
 distinguish genuine NULL from a zero value.
 """
 
-from mosqlite.db import Database, Row
+from sqlite.db import Database, Row
 
 
 def _print_row(row_num: Int, row: Row) raises:

@@ -1,4 +1,4 @@
-"""Unit tests for mosqlite.db -- Database, Statement, Row, Transaction.
+"""Unit tests for sqlite.db -- Database, Statement, Row, Transaction.
 
 Tests use an in-memory database (``:memory:``) for isolation and speed.
 
@@ -27,8 +27,8 @@ Coverage:
 """
 
 from std.testing import assert_equal, assert_true, assert_false
-from mosqlite.db import Database, Row, Transaction
-from mosqlite.orm import create_table, insert, query as orm_query
+from sqlite.db import Database, Row, Transaction
+from sqlite.orm import create_table, insert, query as orm_query
 
 
 # Top-level struct for test_transaction_orm_atomicity (Mojo disallows

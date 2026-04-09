@@ -1,4 +1,4 @@
-"""Property-based fuzz tests for mosqlite using mozz.
+"""Property-based fuzz tests for sqlite using mozz.
 
 Uses ``forall[T]`` for typed property tests and ``forall_bytes`` for raw-byte
 SQL injection probing.  All tests use in-memory SQLite databases so there are
@@ -20,8 +20,8 @@ Properties verified:
 """
 
 from std.testing import assert_equal, assert_true
-from mosqlite.db import Database
-from mosqlite.orm import create_table, insert, query
+from sqlite.db import Database
+from sqlite.orm import create_table, insert, query
 from mozz import (
     forall,
     forall_bytes,

@@ -10,7 +10,7 @@ Demonstrates:
 The key rule: **parameters are 1-based** (matching the SQLite C API).
 """
 
-from mosqlite.db import Database
+from sqlite.db import Database
 
 
 def main() raises:

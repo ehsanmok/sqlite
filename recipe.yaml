@@ -1,5 +1,5 @@
 package:
-  name: mosqlite
+  name: sqlite
   version: "0.1.0"
 
 source:
@@ -8,7 +8,7 @@ source:
 build:
   script:
     - mkdir -p $PREFIX/lib/mojo
-    - cp -r mosqlite $PREFIX/lib/mojo/
+    - cp -r sqlite $PREFIX/lib/mojo/
 
 requirements:
   host:

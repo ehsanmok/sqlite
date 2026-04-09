@@ -1,20 +1,19 @@
 [workspace]
 authors = ["ehsanmok <ehsanmok@users.noreply.github.com>"]
 channels = ["https://conda.modular.com/max-nightly", "conda-forge"]
-name = "mosqlite"
+name = "sqlite"
 platforms = ["linux-64", "osx-arm64"]
 version = "0.1.0"
 preview = ["pixi-build"]
 
 [package]
-name = "mosqlite"
+name = "sqlite"
 version = "0.1.0"
 
 [package.build]
 backend = { name = "pixi-build-rattler-build", version = "*" }
 
 [dependencies]
-mosqlite = { path = "." }
 mojo = "<1.0"
 morph = { git = "https://github.com/ehsanmok/morph.git", branch = "main" }
 sqlite = ">=3.45"
@@ -34,8 +33,8 @@ dev     = { features = ["dev"], solve-group = "default" }
 [tasks]
 # Format
 install-pre-commit = "pre-commit install"
-format = { cmd = "mojo format mosqlite tests examples benchmark", depends-on = ["install-pre-commit"] }
-format-check = "mojo format --check mosqlite tests examples benchmark"
+format = { cmd = "mojo format sqlite tests examples benchmark", depends-on = ["install-pre-commit"] }
+format-check = "mojo format --check sqlite tests examples benchmark"
 
 # Tests
 tests     = "mojo $MOJO_FLAGS tests/test_db.mojo && mojo $MOJO_FLAGS tests/test_orm.mojo && mojo $MOJO_FLAGS tests/test_fuzz.mojo"
@@ -57,5 +56,5 @@ examples   = { depends-on = ["example-01", "example-02", "example-03", "example-
 bench = "mojo $MOJO_FLAGS benchmark/bench.mojo"
 
 # Docs
-docs       = "mojodoc ./mosqlite --open"
-docs-build = "mojodoc ./mosqlite --out-dir target/doc --base-url /mosqlite/"
+docs       = "mojodoc ./sqlite --open"
+docs-build = "mojodoc ./sqlite --out-dir target/doc --base-url /sqlite/"

@@ -1,4 +1,4 @@
-"""Transactions — atomic multi-statement operations with mosqlite.
+"""Transactions — atomic multi-statement operations with sqlite.
 
 Demonstrates:
 - ``with db.transaction():``  — context-manager pattern; auto-commit on clean
@@ -26,7 +26,7 @@ Demonstrates:
         raise e.copy()          # re-raise to caller
 """
 
-from mosqlite import Database, Transaction
+from sqlite import Database, Transaction
 
 
 # -------------------------------------------------------------------------

@@ -10,11 +10,11 @@ On read-back, a NULL column becomes ``None``; a non-NULL column becomes
 
 This example also shows the ``where`` parameter of ``query``, which appends a
 raw ``WHERE <clause>`` to the generated ``SELECT *``.  Pass only the predicate
-expression — mosqlite inserts the ``WHERE`` keyword automatically.
+expression — sqlite inserts the ``WHERE`` keyword automatically.
 """
 
-from mosqlite.db import Database
-from mosqlite.orm import create_table, insert, query
+from sqlite.db import Database
+from sqlite.orm import create_table, insert, query
 
 
 # ---------------------------------------------------------------------------

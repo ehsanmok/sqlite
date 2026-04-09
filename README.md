@@ -1,7 +1,7 @@
-# mosqlite
+# sqlite
 
-[![CI](https://github.com/ehsanmok/mosqlite/actions/workflows/ci.yml/badge.svg)](https://github.com/ehsanmok/mosqlite/actions)
-[![Docs](https://github.com/ehsanmok/mosqlite/actions/workflows/docs.yaml/badge.svg)](https://ehsanmok.github.io/mosqlite)
+[![CI](https://github.com/ehsanmok/sqlite/actions/workflows/ci.yml/badge.svg)](https://github.com/ehsanmok/sqlite/actions)
+[![Docs](https://github.com/ehsanmok/sqlite/actions/workflows/docs.yaml/badge.svg)](https://ehsanmok.github.io/sqlite)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 SQLite bindings for Mojo with a safe API, Pythonic context-manager
@@ -26,7 +26,7 @@ transactions, and an ORM layer powered by compile-time reflection via
 ### ORM
 
 ```mojo
-from mosqlite import Database, create_table, insert, query
+from sqlite import Database, create_table, insert, query
 
 @fieldwise_init
 struct Person(Defaultable, Movable):
@@ -60,7 +60,7 @@ auto-commit / auto-rollback semantics as Python's `with conn:`.
 #### Context-manager pattern (recommended)
 
 ```mojo
-from mosqlite import Database
+from sqlite import Database
 
 def transfer(mut db: Database, from_id: Int, to_id: Int, amount: Int) raises:
     with db.transaction():
@@ -72,7 +72,7 @@ def transfer(mut db: Database, from_id: Int, to_id: Int, amount: Int) raises:
             "UPDATE accounts SET balance = balance + "
             + String(amount) + " WHERE id = " + String(to_id)
         )
-    # → COMMIT on success; ROLLBACK + re-raise if either UPDATE raised
+    # -> COMMIT on success; ROLLBACK + re-raise if either UPDATE raised
 ```
 
 For explicit guard access (e.g., conditional rollback without raising), use
@@ -98,13 +98,13 @@ tx.commit()                 # explicit COMMIT
 # Abandon without raising: immediate ROLLBACK
 var tx2 = db.transaction()
 db.execute("INSERT ...")
-_ = tx2^                    # consume guard → ROLLBACK right here
+_ = tx2^                    # consume guard -> ROLLBACK right here
 ```
 
 ### Raw prepared statements
 
 ```mojo
-from mosqlite import Database
+from sqlite import Database
 
 def main() raises:
     var db = Database(":memory:")
@@ -126,7 +126,7 @@ def main() raises:
 
 ## API reference
 
-Full API reference is available at the [docs site](https://ehsanmok.github.io/mosqlite).
+Full API reference is available at the [docs site](https://ehsanmok.github.io/sqlite).
 
 ## Examples
 
@@ -144,7 +144,7 @@ Progressive examples live in [`examples/`](examples/):
 
 ## Installation
 
-Add mosqlite to your project's `pixi.toml`:
+Add sqlite to your project's `pixi.toml`:
 
 ```toml
 [workspace]
@@ -152,7 +152,7 @@ channels = ["https://conda.modular.com/max-nightly", "conda-forge"]
 preview = ["pixi-build"]
 
 [dependencies]
-mosqlite = { git = "https://github.com/ehsanmok/mosqlite.git", branch = "main" }
+sqlite = { git = "https://github.com/ehsanmok/sqlite.git", branch = "main" }
 ```
 
 Then run:
