@@ -5,8 +5,8 @@ Provides four structs that wrap the raw FFI handles from ``ffi.mojo``:
 - ``Database``    -- owns a SQLite connection; closes it on destruction.
 - ``Statement``   -- owns a prepared statement; finalizes it on destruction.
 - ``Row``         -- a snapshot of a single result row (value types, not a borrow).
-- ``Transaction`` -- RAII transaction guard; rolls back automatically unless
-                     ``commit()`` is called.
+- ``Transaction`` -- context-manager / RAII transaction guard; commits on clean
+                     exit, rolls back automatically on exception.
 
 **Basic usage**::
 
@@ -24,11 +24,18 @@ Provides four structs that wrap the raw FFI handles from ``ffi.mojo``:
             break
         print(row.value().int_val(0), row.value().text_val(1))
 
-**Transaction usage (auto-rollback on error)**::
+**Transaction usage — context manager (recommended)**::
+
+    with db.transaction():
+        db.execute("INSERT INTO orders VALUES (1, 'Alice')")
+        db.execute("INSERT INTO line_items VALUES (1, 42, 3)")
+    # → COMMIT on clean exit; ROLLBACK if any statement raises
+
+**Transaction usage — manual control**::
 
     var tx = db.transaction()       # issues BEGIN
     db.execute("INSERT ...")
-    db.execute("INSERT ...")        # if this raises, tx is destroyed → ROLLBACK
+    db.execute("INSERT ...")
     tx.commit()                     # issues COMMIT; destructor becomes a no-op
 """
 
@@ -64,46 +71,47 @@ from .ffi import (
 
 
 struct Transaction(Movable):
-    """RAII transaction guard — automatically rolls back unless committed.
+    """RAII transaction guard — ``with`` block commits on success, rolls back on error.
 
-    Obtain a ``Transaction`` via ``Database.transaction()``, which issues a
-    ``BEGIN`` immediately.  If ``commit()`` is called the changes are
-    persisted.  If the ``Transaction`` is destroyed before ``commit()`` —
-    whether by an exception unwinding the stack, an early ``return``, or
-    explicit ``rollback()`` — a ``ROLLBACK`` is issued automatically.
+    Obtain a ``Transaction`` via ``Database.transaction()``, which issues
+    ``BEGIN`` immediately.
 
-    **Idiomatic Mojo usage pattern** — call ``rollback()`` explicitly in the
-    ``except`` handler (Mojo's ``def`` scoping keeps a ``var`` alive until the
-    end of the enclosing function, so the destructor fires too late to serve
-    as a Python-style ``with`` statement replacement):
+    **Context-manager usage (recommended)** — identical to Python's
+    ``with conn:`` pattern::
 
-    .. code-block:: mojo
+        with db.transaction():
+            db.execute("INSERT INTO orders VALUES (1, 'Alice')")
+            db.execute("INSERT INTO line_items VALUES (1, 42, 3)")
+        # → COMMIT issued automatically; both rows written atomically
 
-        def transfer(db: Database, from_id: Int, to_id: Int, amount: Int) raises:
-            var tx = db.transaction()           # BEGIN
-            try:
-                db.execute("UPDATE accounts SET balance = balance - "
-                           + String(amount) + " WHERE id = " + String(from_id))
-                db.execute("UPDATE accounts SET balance = balance + "
-                           + String(amount) + " WHERE id = " + String(to_id))
-                tx.commit()                     # COMMIT on success
-            except e:
-                tx.rollback()                   # ROLLBACK on any error
-                raise e                         # re-raise to caller
+    If any statement inside raises, ``ROLLBACK`` is issued and the original
+    exception propagates::
 
-    Alternatively, to abandon a transaction at a known point without raising,
-    use ``_ = tx^`` to consume (and immediately destroy) the guard:
+        with db.transaction():
+            db.execute("INSERT INTO t VALUES (1)")
+            raise Error("oops")     # → __exit__(err) → ROLLBACK, re-raised
 
-    .. code-block:: mojo
+    **Manual usage (fine-grained control)** — use ``var tx`` when you need
+    explicit guard access (conditional rollback, multiple commit points).
+    Note: Mojo's ``with``/``__exit__`` protocol requires a non-consuming
+    ``__enter__``, so ``with ... as tx:`` binds ``tx`` to ``None`` — use
+    ``var tx`` instead::
+
+        var tx = db.transaction()   # BEGIN
+        db.execute("INSERT ...")
+        if some_condition:
+            tx.rollback()           # abort without raising
+            return
+        tx.commit()                 # explicit COMMIT; destructor becomes no-op
+
+    To abandon without raising, consume the guard immediately::
 
         var tx = db.transaction()
-        db.execute("INSERT ...")
-        _ = tx^                                 # guard destroyed → ROLLBACK
+        _ = tx^                     # guard destroyed → immediate ROLLBACK
 
     Note:
-        Nested transactions are not supported by SQLite's
-        ``BEGIN``/``COMMIT`` protocol.  Use ``SAVEPOINT`` directly if you
-        need nesting.
+        Nested transactions are not supported via ``BEGIN``/``COMMIT``.
+        Use ``SAVEPOINT`` directly if you need nesting.
     """
 
     var _handle: Int   # sqlite3 connection handle (non-owning borrow)
@@ -159,6 +167,55 @@ struct Transaction(Movable):
         if not self._done:
             _sqlite3_exec(self._handle, "ROLLBACK")
             self._done = True
+
+    # ------------------------------------------------------------------
+    # Context-manager protocol
+    # ------------------------------------------------------------------
+
+    def __enter__(mut self):
+        """Enter the transaction context manager.
+
+        ``BEGIN`` was already issued in ``__init__``, so nothing extra is
+        needed here.  Mojo's ``with`` statement calls ``__exit__`` on this
+        same object when the block finishes.
+
+        Note:
+            Because ``__exit__`` is defined, Mojo requires a non-consuming
+            ``__enter__``.  Use ``with db.transaction():`` (without ``as``);
+            for explicit guard access, use ``var tx = db.transaction()``.
+        """
+        pass
+
+    def __exit__(mut self) raises:
+        """Commit on clean exit.
+
+        Called automatically when the ``with`` block finishes without raising.
+        Equivalent to calling ``commit()`` explicitly.
+
+        Raises:
+            Error: If ``COMMIT`` fails (e.g., disk full, constraint violation).
+        """
+        self.commit()
+
+    def __exit__(mut self, err: Error) -> Bool:
+        """Roll back on exception and re-raise.
+
+        Called automatically when an exception escapes the ``with`` block.
+        Issues ``ROLLBACK`` to discard all pending changes, swallows any
+        rollback error (so the original exception is not replaced), then
+        returns ``False`` so the original exception continues to propagate.
+
+        Args:
+            err: The exception raised inside the ``with`` block.
+
+        Returns:
+            ``False`` — always re-raises the caller's exception.
+        """
+        try:
+            self.rollback()
+        except:
+            pass
+        return False
 
 
 # -----------------------------------------------------------------------

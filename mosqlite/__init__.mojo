@@ -41,19 +41,17 @@ def main() raises:
         print(rows[i].name, rows[i].age, rows[i].score)
 ```
 
-## Transaction API (auto-rollback on error)
+## Transaction API — context manager (recommended)
 
-``db.transaction()`` returns a ``Transaction`` guard that issues ``BEGIN``
-immediately.  Call ``commit()`` to persist; any exception or early return
-before ``commit()`` triggers an automatic ``ROLLBACK`` via the destructor --
-the Mojo equivalent of Python's ``with connection:`` block.
+``db.transaction()`` supports Mojo's ``with`` statement.  The ``with`` block
+auto-commits on clean exit and auto-rolls back (re-raising) if any statement
+raises — identical to Python's ``with conn:`` pattern.
 
 ```mojo
 from mosqlite import Database
 
 def transfer(db: Database, from_id: Int, to_id: Int, amount: Int) raises:
-    var tx = db.transaction()   # BEGIN
-    try:
+    with db.transaction():
         db.execute(
             "UPDATE accounts SET balance = balance - "
             + String(amount) + " WHERE id = " + String(from_id)
@@ -62,10 +60,21 @@ def transfer(db: Database, from_id: Int, to_id: Int, amount: Int) raises:
             "UPDATE accounts SET balance = balance + "
             + String(amount) + " WHERE id = " + String(to_id)
         )
-        tx.commit()             # COMMIT — both updates are now permanent.
-    except e:
-        tx.rollback()           # ROLLBACK — neither update is applied.
-        raise e
+    # → COMMIT on success; ROLLBACK + re-raise if either UPDATE failed
+```
+
+For fine-grained control (conditional rollback without raising, multiple
+commit points), use the ``var tx`` manual form.  Note: Mojo's
+``with``/``__exit__`` protocol requires a non-consuming ``__enter__``, so
+``with ... as tx:`` would bind ``tx`` to ``None`` — use ``var tx`` instead:
+
+```mojo
+var tx = db.transaction()   # BEGIN
+db.execute("INSERT ...")
+if some_condition:
+    tx.rollback()           # abort without raising
+    return
+tx.commit()                 # explicit COMMIT
 ```
 
 ## Raw statement API

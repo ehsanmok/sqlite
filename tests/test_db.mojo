@@ -20,6 +20,9 @@ Coverage:
   without commit (simulates the exception-unwind case)
 - Multi-statement atomicity: one failing INSERT inside a transaction leaves
   the table empty
+- ``Transaction`` context manager: auto-commit on clean exit
+- ``Transaction`` context manager: auto-rollback when ``with`` block raises
+- ``Transaction`` context manager: ``as tx`` pattern with explicit rollback
 - Column count via ``num_cols``
 """
 
@@ -767,6 +770,112 @@ def test_transaction_error_leaves_table_empty() raises:
     assert_equal(row.int_val(0), 0, "rollback() in except must revert the valid INSERT")
 
 
+# -----------------------------------------------------------------------
+# Transaction context manager
+# -----------------------------------------------------------------------
+
+
+def test_with_transaction_auto_commit() raises:
+    """``with db.transaction():`` commits all changes on clean exit.
+
+    The ``with`` block's ``__exit__()`` (no error) calls ``commit()``.
+    All rows inserted inside the block must be visible after the block.
+    """
+    var db = Database(":memory:")
+    db.execute("CREATE TABLE t (v INTEGER)")
+
+    with db.transaction():
+        db.execute("INSERT INTO t VALUES (1)")
+        db.execute("INSERT INTO t VALUES (2)")
+        db.execute("INSERT INTO t VALUES (3)")
+    # __exit__() → COMMIT
+
+    var q = db.prepare("SELECT COUNT(*) FROM t")
+    ref row = q.step().value()
+    assert_equal(row.int_val(0), 3, "all rows must be committed on clean with-exit")
+
+
+def test_with_transaction_auto_rollback_on_raise() raises:
+    """``with db.transaction():`` rolls back automatically when the block raises.
+
+    The ``with`` block's ``__exit__(err)`` (error path) calls ``rollback()``
+    and returns ``False`` (re-raises).  No row must be visible after.
+    """
+    var db = Database(":memory:")
+    db.execute("CREATE TABLE t (v INTEGER)")
+
+    try:
+        with db.transaction():
+            db.execute("INSERT INTO t VALUES (99)")
+            raise Error("intentional error inside with block")
+    except:
+        pass  # expected — transaction was rolled back and exception re-raised
+
+    var q = db.prepare("SELECT COUNT(*) FROM t")
+    ref row = q.step().value()
+    assert_equal(row.int_val(0), 0, "with block must auto-rollback on exception")
+
+
+def test_with_transaction_pre_rollback_then_with_exits_cleanly() raises:
+    """``rollback()`` before a ``with`` block exit leaves the guard marked done.
+
+    When a ``Transaction`` is obtained via ``var tx``, the user calls
+    ``rollback()`` explicitly, and then ``tx`` goes out of scope (``__del__``),
+    the destructor is a no-op.  This tests that ``_done=True`` after
+    ``rollback()`` prevents a second ``ROLLBACK`` in ``__del__``.
+    """
+    var db = Database(":memory:")
+    db.execute("CREATE TABLE t (v INTEGER)")
+
+    var tx = db.transaction()
+    db.execute("INSERT INTO t VALUES (7)")
+    tx.rollback()           # marks _done=True; __del__ is now a no-op
+
+    var q = db.prepare("SELECT COUNT(*) FROM t")
+    ref row = q.step().value()
+    assert_equal(row.int_val(0), 0, "rollback before scope exit must revert INSERT")
+
+
+def test_with_transaction_commit_makes_exit_noop() raises:
+    """``commit()`` marks the guard done so ``__del__`` becomes a no-op.
+
+    Calls ``commit()`` explicitly, then verifies the data persists and that
+    a subsequent out-of-scope destruction does not issue a spurious ROLLBACK.
+    """
+    var db = Database(":memory:")
+    db.execute("CREATE TABLE t (v INTEGER)")
+
+    var tx = db.transaction()
+    db.execute("INSERT INTO t VALUES (5)")
+    tx.commit()             # _done=True; __del__ is now a no-op
+
+    var q = db.prepare("SELECT COUNT(*) FROM t")
+    ref row = q.step().value()
+    assert_equal(row.int_val(0), 1, "commit must persist INSERT; __del__ must not rollback")
+
+
+def test_with_transaction_rollback_does_not_affect_prior_commit() raises:
+    """A failed ``with`` block does not roll back data from a prior committed transaction."""
+    var db = Database(":memory:")
+    db.execute("CREATE TABLE t (v INTEGER)")
+
+    # First transaction commits successfully.
+    with db.transaction():
+        db.execute("INSERT INTO t VALUES (10)")
+
+    # Second transaction raises and auto-rolls back.
+    try:
+        with db.transaction():
+            db.execute("INSERT INTO t VALUES (20)")
+            raise Error("second transaction fails")
+    except:
+        pass
+
+    var q = db.prepare("SELECT COUNT(*) FROM t")
+    ref row = q.step().value()
+    assert_equal(row.int_val(0), 1, "prior committed row must survive a later rollback")
+
+
 def test_transaction_orm_atomicity() raises:
     """Two ORM inserts in a transaction are both committed or both rolled back."""
     var db = Database(":memory:")
@@ -930,6 +1039,18 @@ def main() raises:
     print("test_transaction_error_leaves_table_empty           PASSED")
     test_transaction_orm_atomicity()
     print("test_transaction_orm_atomicity                      PASSED")
+
+    # Transaction context manager
+    test_with_transaction_auto_commit()
+    print("test_with_transaction_auto_commit                              PASSED")
+    test_with_transaction_auto_rollback_on_raise()
+    print("test_with_transaction_auto_rollback_on_raise                   PASSED")
+    test_with_transaction_pre_rollback_then_with_exits_cleanly()
+    print("test_with_transaction_pre_rollback_then_with_exits_cleanly     PASSED")
+    test_with_transaction_commit_makes_exit_noop()
+    print("test_with_transaction_commit_makes_exit_noop                   PASSED")
+    test_with_transaction_rollback_does_not_affect_prior_commit()
+    print("test_with_transaction_rollback_does_not_affect_prior_commit    PASSED")
 
     # last_error
     test_last_error_after_open()

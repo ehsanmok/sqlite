@@ -4,21 +4,21 @@
 [![Docs](https://github.com/ehsanmok/mosqlite/actions/workflows/docs.yaml/badge.svg)](https://ehsanmok.github.io/mosqlite)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-SQLite bindings for Mojo with a safe API, RAII transactions, and an
-ORM layer powered by compile-time reflection via
+SQLite bindings for Mojo with a safe API, Pythonic context-manager
+transactions, and an ORM layer powered by compile-time reflection via
 [morph](https://github.com/ehsanmok/morph).
 
 ## Features
 
 - **Three-layer design** — raw FFI → safe `Database`/`Statement`/`Row` API →
   `morph`-based ORM
-- **RAII transactions** — `db.transaction()` returns a guard that commits or
-  rolls back automatically
+- **Pythonic transactions** — `with db.transaction():` commits on success,
+  rolls back automatically on exception (identical to Python's `with conn:`)
 - **ORM** — `create_table`, `insert`, `query` driven by compile-time struct
   reflection; no SQL to write for basic CRUD
 - **Rich type support** — `String`, `Int`, `Int64`, `Float64`, `Float32`,
   `Bool`, `Optional[T]`
-- **93 tests** — unit, edge-case, and property-based fuzz tests via
+- **98 tests** — unit, edge-case, and property-based fuzz tests via
   [mozz](https://github.com/ehsanmok/mozz)
 
 ## Quick start
@@ -54,17 +54,16 @@ def main() raises:
 
 ### Transactions
 
-`db.transaction()` issues `BEGIN` immediately and returns an RAII
-`Transaction` guard.  Call `commit()` on success; call `rollback()` in the
-`except` handler on failure.  If neither is called, the destructor issues a
-safety-net `ROLLBACK`.
+`db.transaction()` supports Mojo's `with` statement, giving you the same
+auto-commit / auto-rollback semantics as Python's `with conn:`.
+
+#### Context-manager pattern (recommended)
 
 ```mojo
 from mosqlite import Database
 
 def transfer(mut db: Database, from_id: Int, to_id: Int, amount: Int) raises:
-    var tx = db.transaction()           # BEGIN
-    try:
+    with db.transaction():
         db.execute(
             "UPDATE accounts SET balance = balance - "
             + String(amount) + " WHERE id = " + String(from_id)
@@ -73,19 +72,33 @@ def transfer(mut db: Database, from_id: Int, to_id: Int, amount: Int) raises:
             "UPDATE accounts SET balance = balance + "
             + String(amount) + " WHERE id = " + String(to_id)
         )
-        tx.commit()                     # COMMIT — both rows atomically
-    except e:
-        tx.rollback()                   # ROLLBACK — neither row changes
-        raise e.copy()
+    # → COMMIT on success; ROLLBACK + re-raise if either UPDATE raised
 ```
 
-To abandon a transaction at a known point without raising, consume the guard
-with `_ = tx^` which triggers immediate destruction → `ROLLBACK`:
+For explicit guard access (e.g., conditional rollback without raising), use
+the `var tx` form — Mojo's `with/__exit__` protocol requires a non-consuming
+`__enter__`, so `with ... as tx:` would bind `tx` to `None`:
 
 ```mojo
-var tx = db.transaction()
+var tx = db.transaction()   # BEGIN
 db.execute("INSERT ...")
-_ = tx^                                 # ROLLBACK right here
+if some_condition:
+    tx.rollback()           # abort without raising
+    return
+tx.commit()
+```
+
+#### Manual pattern (fine-grained control)
+
+```mojo
+var tx = db.transaction()   # BEGIN
+db.execute("INSERT ...")
+tx.commit()                 # explicit COMMIT
+
+# Abandon without raising — immediate ROLLBACK:
+var tx2 = db.transaction()
+db.execute("INSERT ...")
+_ = tx2^                    # consume guard → ROLLBACK right here
 ```
 
 ### Raw prepared statements
@@ -146,10 +159,15 @@ def main() raises:
 
 ### `Transaction`
 
-| Method | Description |
+`Transaction` implements `__enter__`/`__exit__` so it works directly with
+Mojo's `with` statement.  It can also be used manually.
+
+| Usage | Description |
 |---|---|
-| `tx.commit()` | `COMMIT`; destructor becomes a no-op |
-| `tx.rollback()` | `ROLLBACK`; destructor becomes a no-op |
+| `with db.transaction():` | Auto-commit on clean exit; auto-rollback on exception |
+| `with db.transaction() as tx:` | Same, plus `tx` is accessible inside the block |
+| `tx.commit()` | `COMMIT`; subsequent `__exit__` / destructor is a no-op |
+| `tx.rollback()` | `ROLLBACK`; subsequent `__exit__` / destructor is a no-op |
 | `_ = tx^` | Consume guard → immediate `ROLLBACK` |
 
 ### ORM functions
@@ -189,7 +207,7 @@ Progressive examples live in [`examples/`](examples/):
 | `04_orm_basics.mojo` | ORM `create_table` / `insert` / `query` |
 | `05_orm_optional.mojo` | `Optional` fields, `WHERE` / `ORDER BY` |
 | `06_contacts_app.mojo` | Realistic CRUD mini-app with transactions |
-| `07_transactions.mojo` | Bank-transfer demo — commit, rollback, `_ = tx^` |
+| `07_transactions.mojo` | Bank-transfer demo — `with`, `as tx`, manual, `_ = tx^` |
 
 ## Installation
 
