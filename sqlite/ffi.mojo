@@ -13,7 +13,7 @@ never needs to resolve SQLite symbols at compile time, eliminating the
 Do not call ``Sqlite3FFI`` methods from user code -- use ``db.mojo``.
 """
 
-from std.ffi import OwnedDLHandle
+from std.ffi import OwnedDLHandle, RTLD
 from std.os import getenv
 from std.sys.info import CompilationTarget
 from std.memory import UnsafePointer
@@ -112,6 +112,9 @@ struct Sqlite3FFI(Movable):
     Each ``Database``, ``Statement``, and ``Transaction`` owns one instance.
     The OS reference-counts the underlying shared library, so multiple
     concurrent ``OwnedDLHandle`` objects map to a single loaded image.
+    ``RTLD.NODELETE`` ensures ``dlclose`` is a no-op: the library stays
+    resident for the process lifetime even as ``Sqlite3FFI`` instances
+    are created and destroyed per-request.
 
     Example::
 
@@ -160,7 +163,13 @@ struct Sqlite3FFI(Movable):
             Error: If the library cannot be opened or a symbol is missing.
         """
         var path = lib_path if lib_path else _find_sqlite3_library()
-        self._lib = OwnedDLHandle(path)
+        # RTLD.NODELETE: dlclose() becomes a no-op for this handle.
+        # Without it, each Database destruction calls dlclose() which on
+        # some platforms fully unloads libsqlite3, wiping all VFS state,
+        # WAL locks, and shared-memory mappings.  This causes "no such
+        # table" and SQLITE_CANTOPEN errors on subsequent open() calls.
+        # The library stays resident until process exit regardless.
+        self._lib = OwnedDLHandle(path, RTLD.NOW | RTLD.GLOBAL | RTLD.NODELETE)
 
         self._fn_open = self._lib.get_function[def(Int, Int) abi("C") -> Int32](
             "sqlite3_open"
@@ -222,6 +231,11 @@ struct Sqlite3FFI(Movable):
         Uses a ``List[Int]`` as the output buffer for the ``sqlite3**``
         argument (same pattern as simdjson FFI for output pointer args).
 
+        Passes an explicit null-terminated copy of ``filename`` (same
+        pattern as ``exec``) to avoid the Mojo ``String`` quirk where
+        reused heap buffers may contain stale bytes after the logical
+        string end.
+
         Args:
             filename: File path or ``:memory:`` for an in-memory database.
 
@@ -231,14 +245,21 @@ struct Sqlite3FFI(Movable):
         Raises:
             Error: If ``sqlite3_open`` returns a non-zero code.
         """
-        var fname = filename
+        var n = len(filename)
+        var src = filename.unsafe_ptr()
+        var buf = List[UInt8](capacity=n + 1)
+        for i in range(n):
+            buf.append(src[i])
+        buf.append(0)  # explicit null terminator
         var db_out = List[Int](capacity=1)
         db_out.append(0)
         var rc = self._fn_open(
-            Int(fname.unsafe_ptr()),
+            Int(buf.unsafe_ptr()),
             Int(db_out.unsafe_ptr()),
         )
-        _check(rc, "sqlite3_open('" + filename + "') failed")
+        _ = buf^  # keep buf alive past the FFI call
+        if Int(rc) != SQLITE_OK:
+            raise Error("sqlite3_open('" + filename + "') failed (sqlite3 rc=" + String(Int(rc)) + ")")
         return db_out[0]
 
     def close(self, db: Int) abi("C") -> Int32:
