@@ -245,7 +245,7 @@ struct Sqlite3FFI(Movable):
         Raises:
             Error: If ``sqlite3_open`` returns a non-zero code.
         """
-        var n = len(filename)
+        var n = filename.byte_length()
         var src = filename.unsafe_ptr()
         var buf = List[UInt8](capacity=n + 1)
         for i in range(n):
@@ -303,7 +303,7 @@ struct Sqlite3FFI(Movable):
         Raises:
             Error: If ``sqlite3_exec`` returns a non-zero code.
         """
-        var n = len(sql)
+        var n = sql.byte_length()
         var src = sql.unsafe_ptr()
         var buf = List[UInt8](capacity=n + 1)
         for i in range(n):
@@ -347,7 +347,7 @@ struct Sqlite3FFI(Movable):
             Error: If compilation fails.
         """
         var s = sql
-        var sql_len = Int32(len(s))
+        var sql_len = Int32(s.byte_length())
         var stmt_out = List[Int](capacity=1)
         stmt_out.append(0)
         var rc = self._fn_prepare(
