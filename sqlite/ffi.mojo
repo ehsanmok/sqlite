@@ -127,29 +127,29 @@ struct Sqlite3FFI(Movable):
     var _lib: OwnedDLHandle
 
     # -- connection functions ------------------------------------------------
-    var _fn_open:   def(Int, Int) abi("C") -> Int32
-    var _fn_close:  def(Int) abi("C") -> Int32
-    var _fn_errmsg: def(Int) abi("C") -> UnsafePointer[UInt8, MutExternalOrigin]
-    var _fn_exec:   def(Int, Int, Int, Int, Int) abi("C") -> Int32
+    var _fn_open:   def(Int, Int) thin abi("C") -> Int32
+    var _fn_close:  def(Int) thin abi("C") -> Int32
+    var _fn_errmsg: def(Int) thin abi("C") -> UnsafePointer[UInt8, MutExternalOrigin]
+    var _fn_exec:   def(Int, Int, Int, Int, Int) thin abi("C") -> Int32
 
     # -- prepared statement functions ----------------------------------------
-    var _fn_prepare:  def(Int, Int, Int32, Int, Int) abi("C") -> Int32
-    var _fn_step:     def(Int) abi("C") -> Int32
-    var _fn_reset:    def(Int) abi("C") -> Int32
-    var _fn_finalize: def(Int) abi("C") -> Int32
+    var _fn_prepare:  def(Int, Int, Int32, Int, Int) thin abi("C") -> Int32
+    var _fn_step:     def(Int) thin abi("C") -> Int32
+    var _fn_reset:    def(Int) thin abi("C") -> Int32
+    var _fn_finalize: def(Int) thin abi("C") -> Int32
 
     # -- parameter binding (1-based index) -----------------------------------
-    var _fn_bind_int:    def(Int, Int32, Int) abi("C") -> Int32
-    var _fn_bind_double: def(Int, Int32, Float64) abi("C") -> Int32
-    var _fn_bind_text:   def(Int, Int32, Int, Int32, Int) abi("C") -> Int32
-    var _fn_bind_null:   def(Int, Int32) abi("C") -> Int32
+    var _fn_bind_int:    def(Int, Int32, Int) thin abi("C") -> Int32
+    var _fn_bind_double: def(Int, Int32, Float64) thin abi("C") -> Int32
+    var _fn_bind_text:   def(Int, Int32, Int, Int32, Int) thin abi("C") -> Int32
+    var _fn_bind_null:   def(Int, Int32) thin abi("C") -> Int32
 
     # -- column reading (0-based index) --------------------------------------
-    var _fn_col_count:  def(Int) abi("C") -> Int32
-    var _fn_col_type:   def(Int, Int32) abi("C") -> Int32
-    var _fn_col_int64:  def(Int, Int32) abi("C") -> Int
-    var _fn_col_double: def(Int, Int32) abi("C") -> Float64
-    var _fn_col_text:   def(Int, Int32) abi("C") -> UnsafePointer[UInt8, MutExternalOrigin]
+    var _fn_col_count:  def(Int) thin abi("C") -> Int32
+    var _fn_col_type:   def(Int, Int32) thin abi("C") -> Int32
+    var _fn_col_int64:  def(Int, Int32) thin abi("C") -> Int
+    var _fn_col_double: def(Int, Int32) thin abi("C") -> Float64
+    var _fn_col_text:   def(Int, Int32) thin abi("C") -> UnsafePointer[UInt8, MutExternalOrigin]
 
     def __init__(out self, lib_path: String = "") raises:
         """Load ``libsqlite3`` and resolve all function pointers.
@@ -171,56 +171,56 @@ struct Sqlite3FFI(Movable):
         # The library stays resident until process exit regardless.
         self._lib = OwnedDLHandle(path, RTLD.NOW | RTLD.GLOBAL | RTLD.NODELETE)
 
-        self._fn_open = self._lib.get_function[def(Int, Int) abi("C") -> Int32](
+        self._fn_open = self._lib.get_function[def(Int, Int) thin abi("C") -> Int32](
             "sqlite3_open"
         )
-        self._fn_close = self._lib.get_function[def(Int) abi("C") -> Int32](
+        self._fn_close = self._lib.get_function[def(Int) thin abi("C") -> Int32](
             "sqlite3_close"
         )
         self._fn_errmsg = self._lib.get_function[
-            def(Int) abi("C") -> UnsafePointer[UInt8, MutExternalOrigin]
+            def(Int) thin abi("C") -> UnsafePointer[UInt8, MutExternalOrigin]
         ]("sqlite3_errmsg")
         self._fn_exec = self._lib.get_function[
-            def(Int, Int, Int, Int, Int) abi("C") -> Int32
+            def(Int, Int, Int, Int, Int) thin abi("C") -> Int32
         ]("sqlite3_exec")
         self._fn_prepare = self._lib.get_function[
-            def(Int, Int, Int32, Int, Int) abi("C") -> Int32
+            def(Int, Int, Int32, Int, Int) thin abi("C") -> Int32
         ]("sqlite3_prepare_v2")
-        self._fn_step = self._lib.get_function[def(Int) abi("C") -> Int32](
+        self._fn_step = self._lib.get_function[def(Int) thin abi("C") -> Int32](
             "sqlite3_step"
         )
-        self._fn_reset = self._lib.get_function[def(Int) abi("C") -> Int32](
+        self._fn_reset = self._lib.get_function[def(Int) thin abi("C") -> Int32](
             "sqlite3_reset"
         )
-        self._fn_finalize = self._lib.get_function[def(Int) abi("C") -> Int32](
+        self._fn_finalize = self._lib.get_function[def(Int) thin abi("C") -> Int32](
             "sqlite3_finalize"
         )
         self._fn_bind_int = self._lib.get_function[
-            def(Int, Int32, Int) abi("C") -> Int32
+            def(Int, Int32, Int) thin abi("C") -> Int32
         ]("sqlite3_bind_int64")
         self._fn_bind_double = self._lib.get_function[
-            def(Int, Int32, Float64) abi("C") -> Int32
+            def(Int, Int32, Float64) thin abi("C") -> Int32
         ]("sqlite3_bind_double")
         self._fn_bind_text = self._lib.get_function[
-            def(Int, Int32, Int, Int32, Int) abi("C") -> Int32
+            def(Int, Int32, Int, Int32, Int) thin abi("C") -> Int32
         ]("sqlite3_bind_text")
-        self._fn_bind_null = self._lib.get_function[def(Int, Int32) abi("C") -> Int32](
+        self._fn_bind_null = self._lib.get_function[def(Int, Int32) thin abi("C") -> Int32](
             "sqlite3_bind_null"
         )
-        self._fn_col_count = self._lib.get_function[def(Int) abi("C") -> Int32](
+        self._fn_col_count = self._lib.get_function[def(Int) thin abi("C") -> Int32](
             "sqlite3_column_count"
         )
-        self._fn_col_type = self._lib.get_function[def(Int, Int32) abi("C") -> Int32](
+        self._fn_col_type = self._lib.get_function[def(Int, Int32) thin abi("C") -> Int32](
             "sqlite3_column_type"
         )
-        self._fn_col_int64 = self._lib.get_function[def(Int, Int32) abi("C") -> Int](
+        self._fn_col_int64 = self._lib.get_function[def(Int, Int32) thin abi("C") -> Int](
             "sqlite3_column_int64"
         )
         self._fn_col_double = self._lib.get_function[
-            def(Int, Int32) abi("C") -> Float64
+            def(Int, Int32) thin abi("C") -> Float64
         ]("sqlite3_column_double")
         self._fn_col_text = self._lib.get_function[
-            def(Int, Int32) abi("C") -> UnsafePointer[UInt8, MutExternalOrigin]
+            def(Int, Int32) thin abi("C") -> UnsafePointer[UInt8, MutExternalOrigin]
         ]("sqlite3_column_text")
 
     # -- connection ----------------------------------------------------------
