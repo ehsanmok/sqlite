@@ -14,7 +14,7 @@ version = "0.1.0"
 backend = { name = "pixi-build-rattler-build", version = "*" }
 
 [dependencies]
-mojo = "<1.0"
+mojo = "==0.26.3.0.dev2026041305"
 morph = { git = "https://github.com/ehsanmok/morph.git", branch = "main" }
 sqlite = ">=3.45"
 
@@ -37,7 +37,7 @@ format = { cmd = "mojo format sqlite tests examples benchmark", depends-on = ["i
 format-check = "mojo format --check sqlite tests examples benchmark"
 
 # Tests
-tests     = "mojo $MOJO_FLAGS tests/test_db.mojo && mojo $MOJO_FLAGS tests/test_orm.mojo && mojo $MOJO_FLAGS tests/test_fuzz.mojo"
+tests     = "mojo $MOJO_FLAGS tests/test_db.mojo && mojo $MOJO_FLAGS tests/test_orm.mojo"
 test-db   = "mojo $MOJO_FLAGS tests/test_db.mojo"
 test-orm  = "mojo $MOJO_FLAGS tests/test_orm.mojo"
 test-fuzz = "mojo $MOJO_FLAGS tests/test_fuzz.mojo"
