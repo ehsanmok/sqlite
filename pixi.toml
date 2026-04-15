@@ -15,13 +15,13 @@ backend = { name = "pixi-build-rattler-build", version = "*" }
 
 [dependencies]
 mojo = "==0.26.3.0.dev2026041305"
-morph = { git = "https://github.com/ehsanmok/morph.git", branch = "main" }
+morph = { git = "https://github.com/ehsanmok/morph.git", tag = "v0.1.0" }
 sqlite = ">=3.45"
 
 [feature.dev.dependencies]
 pre-commit = ">=4.2.0,<5"
 mojodoc = { git = "https://github.com/ehsanmok/mojodoc.git", branch = "main" }
-mozz = { git = "https://github.com/ehsanmok/mozz.git", branch = "main" }
+mozz = { git = "https://github.com/ehsanmok/mozz.git", tag = "v0.1.0" }
 
 [activation]
 env = { MOJO_FLAGS = "-I ." }
