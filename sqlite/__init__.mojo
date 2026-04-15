@@ -2,14 +2,14 @@
 
 ``sqlite`` provides three layers of abstraction over the SQLite C library:
 
-**Layer 1 -- FFI** (``sqlite.ffi``): raw ``sqlite3_*`` wrappers with
+**Layer 1, FFI** (``sqlite.ffi``): raw ``sqlite3_*`` wrappers with
 handles stored as ``Int``.  Not intended for direct use.
 
-**Layer 2 -- Safe API** (``sqlite.db``): ``Database``, ``Statement``,
+**Layer 2, Safe API** (``sqlite.db``): ``Database``, ``Statement``,
 ``Row``, and ``Transaction`` structs that own their handles and clean up on
 destruction.
 
-**Layer 3 -- ORM** (``sqlite.orm``): ``create_table``, ``insert``, and
+**Layer 3, ORM** (``sqlite.orm``): ``create_table``, ``insert``, and
 ``query`` generic functions that use compile-time reflection (via
 `morph <https://github.com/ehsanmok/morph>`_) to map Mojo structs directly to
 SQLite tables.
@@ -41,11 +41,11 @@ def main() raises:
         print(rows[i].name, rows[i].age, rows[i].score)
 ```
 
-## Transaction API -- context manager (recommended)
+## Transaction API: context manager (recommended)
 
 ``db.transaction()`` supports Mojo's ``with`` statement.  The ``with`` block
 auto-commits on clean exit and auto-rolls back (re-raising) if any statement
-raises -- identical to Python's ``with conn:`` pattern.
+raises, identical to Python's ``with conn:`` pattern.
 
 ```mojo
 from sqlite import Database
@@ -66,7 +66,7 @@ def transfer(db: Database, from_id: Int, to_id: Int, amount: Int) raises:
 For fine-grained control (conditional rollback without raising, multiple
 commit points), use the ``var tx`` manual form.  Note: Mojo's
 ``with``/``__exit__`` protocol requires a non-consuming ``__enter__``, so
-``with ... as tx:`` would bind ``tx`` to ``None`` -- use ``var tx`` instead:
+``with ... as tx:`` would bind ``tx`` to ``None``, so use ``var tx`` instead:
 
 ```mojo
 var tx = db.transaction()   # BEGIN
