@@ -21,7 +21,7 @@ transactions, and an ORM layer powered by compile-time reflection via
 - **Thoroughly tested**: unit, edge-case, and property-based fuzz tests via
   [mozz](https://github.com/ehsanmok/mozz)
 
-## Quick start
+## Quick Start
 
 ### ORM
 
@@ -124,24 +124,6 @@ def main() raises:
         # 42  hello
 ```
 
-## API reference
-
-Full API reference is available at the [docs site](https://ehsanmok.github.io/sqlite).
-
-## Examples
-
-Progressive examples live in [`examples/`](examples/):
-
-| File | What it shows |
-|---|---|
-| `01_hello_sqlite.mojo` | Open a database, `CREATE TABLE`, `INSERT`, `SELECT` |
-| `02_prepared_statements.mojo` | Bind parameters, iterate rows, reuse statements |
-| `03_all_types.mojo` | Every supported column type round-trip |
-| `04_orm_basics.mojo` | ORM `create_table` / `insert` / `query` |
-| `05_orm_optional.mojo` | `Optional` fields, `WHERE` / `ORDER BY` |
-| `06_contacts_app.mojo` | Realistic CRUD mini-app with transactions |
-| `07_transactions.mojo` | Bank-transfer demo: `with`, `as tx`, manual, `_ = tx^` |
-
 ## Installation
 
 Add sqlite to your project's `pixi.toml`:
@@ -160,6 +142,22 @@ Then run:
 ```bash
 pixi install
 ```
+
+## Examples
+
+Progressive examples live in [`examples/`](examples/):
+
+| File | What it shows |
+|---|---|
+| `01_hello_sqlite.mojo` | Open a database, `CREATE TABLE`, `INSERT`, `SELECT` |
+| `02_prepared_statements.mojo` | Bind parameters, iterate rows, reuse statements |
+| `03_all_types.mojo` | Every supported column type round-trip |
+| `04_orm_basics.mojo` | ORM `create_table` / `insert` / `query` |
+| `05_orm_optional.mojo` | `Optional` fields, `WHERE` / `ORDER BY` |
+| `06_contacts_app.mojo` | Realistic CRUD mini-app with transactions |
+| `07_transactions.mojo` | Bank-transfer demo: `with`, `as tx`, manual, `_ = tx^` |
+
+Full API reference: [ehsanmok.github.io/sqlite](https://ehsanmok.github.io/sqlite)
 
 ## Development
 
