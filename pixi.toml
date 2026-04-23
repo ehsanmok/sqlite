@@ -14,18 +14,9 @@ version = "0.1.0"
 backend = { name = "pixi-build-rattler-build", version = "*" }
 
 [dependencies]
-# Exclude broken Mojo nightlies that crash at process start on Linux
-# (`libKGENCompilerRTShared+0x6de3b` -> libc sigaction).  Upper bound
-# matches morph/uuid; revisit once an upstream fix is released.
-mojo = "<0.26.3.0.dev2026042005"
+mojo = "<1.0"
 morph = { git = "https://github.com/ehsanmok/morph.git", branch = "main" }
 sqlite = ">=3.45"
-
-[target.linux-64.dependencies]
-# Pin sysroot to 2.34 -- newer sysroots (2.39+) have been observed to crash
-# Mojo's JIT runtime (`libKGENCompilerRTShared` abort during process init)
-# on GitHub's ubuntu-latest runners.
-sysroot_linux-64 = "2.34.*"
 
 [feature.dev.dependencies]
 pre-commit = ">=4.2.0,<5"

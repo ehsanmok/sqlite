@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
@@ -31,12 +31,7 @@ jobs:
           post-cleanup: false
 
       - name: Build docs
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          retry_wait_seconds: 30
-          command: pixi run -e dev docs-build
+        run: pixi run -e dev docs-build
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -45,7 +40,7 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
