@@ -12,9 +12,9 @@ build:
 
 requirements:
   host:
-    - mojo <1.0
+    - mojo ==0.26.3.0.dev2026042005
   run:
-    - mojo <1.0
+    - mojo ==0.26.3.0.dev2026042005
 
 about:
   summary: SQLite bindings with morph ORM integration for Mojo
