@@ -3,12 +3,12 @@ authors = ["ehsanmok <ehsanmok@users.noreply.github.com>"]
 channels = ["https://conda.modular.com/max-nightly", "conda-forge"]
 name = "sqlite"
 platforms = ["linux-64", "osx-arm64"]
-version = "0.1.0"
+version = "0.1.1"
 preview = ["pixi-build"]
 
 [package]
 name = "sqlite"
-version = "0.1.0"
+version = "0.1.1"
 
 [package.build]
 backend = { name = "pixi-build-rattler-build", version = "*" }
