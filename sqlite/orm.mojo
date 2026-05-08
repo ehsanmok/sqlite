@@ -45,12 +45,6 @@ Example::
     var rows = query[Person](db, "people")
 """
 
-from std.reflection import (
-    struct_field_count,
-    struct_field_names,
-    struct_field_types,
-    get_type_name,
-)
 from std.builtin.rebind import trait_downcast
 from morph.reflect import (
     _Base,
@@ -90,9 +84,9 @@ def create_table[T: Morphable](db: Database, table: String) raises:
     Raises:
         Error: If ``sqlite3_exec`` fails (e.g. syntax error, permissions).
     """
-    comptime count = struct_field_count[T]()
-    comptime names = struct_field_names[T]()
-    comptime types = struct_field_types[T]()
+    comptime count = reflect[T]().field_count()
+    comptime names = reflect[T]().field_names()
+    comptime types = reflect[T]().field_types()
 
     var col_defs = String("")
     var first = True
@@ -101,7 +95,7 @@ def create_table[T: Morphable](db: Database, table: String) raises:
     for idx in range(count):
         comptime field_name = names[idx]
         comptime field_type = types[idx]
-        comptime type_name = get_type_name[field_type]()
+        comptime type_name = reflect[field_type]().name()
         comptime sql_type = _sql_type_for[field_type]()
 
         if sql_type != "":
@@ -131,9 +125,9 @@ def insert[T: Morphable](db: Database, table: String, value: T) raises:
     Raises:
         Error: If statement preparation or parameter binding fails.
     """
-    comptime count = struct_field_count[T]()
-    comptime names = struct_field_names[T]()
-    comptime types = struct_field_types[T]()
+    comptime count = reflect[T]().field_count()
+    comptime names = reflect[T]().field_names()
+    comptime types = reflect[T]().field_types()
 
     # Build column list and placeholder list.
     var col_list  = String("")
@@ -166,11 +160,11 @@ def insert[T: Morphable](db: Database, table: String, value: T) raises:
     comptime
     for idx in range(count):
         comptime field_type = types[idx]
-        comptime type_name = get_type_name[field_type]()
+        comptime type_name = reflect[field_type]().name()
         comptime sql_type = _sql_type_for[field_type]()
 
         if sql_type != "":
-            ref field = trait_downcast[_Base](__struct_field_ref(idx, value))
+            ref field = trait_downcast[_Base](reflect[T]().field_ref[idx](value))
             var ptr = UnsafePointer(to=field)
 
             comptime
@@ -242,9 +236,9 @@ def query[T: Morphable & Copyable](
     Raises:
         Error: If statement preparation or stepping fails.
     """
-    comptime count = struct_field_count[T]()
-    comptime names = struct_field_names[T]()
-    comptime types = struct_field_types[T]()
+    comptime count = reflect[T]().field_count()
+    comptime names = reflect[T]().field_names()
+    comptime types = reflect[T]().field_types()
 
     var sql = "SELECT * FROM " + table
     if where != "":
@@ -265,11 +259,11 @@ def query[T: Morphable & Copyable](
         comptime
         for idx in range(count):
             comptime field_type = types[idx]
-            comptime type_name = get_type_name[field_type]()
+            comptime type_name = reflect[field_type]().name()
             comptime sql_type = _sql_type_for[field_type]()
 
             if sql_type != "":
-                ref field = trait_downcast[_Base](__struct_field_ref(idx, item))
+                ref field = trait_downcast[_Base](reflect[T]().field_ref[idx](item))
                 var ptr = UnsafePointer(to=field)
 
                 if row.is_null(col_idx):
@@ -361,7 +355,7 @@ def _sql_type_for[T: AnyType]() -> StaticString:
     Returns:
         ``"TEXT"``, ``"INTEGER"``, ``"REAL"``, or ``""`` (unsupported/skip).
     """
-    comptime type_name = get_type_name[T]()
+    comptime type_name = reflect[T]().name()
 
     comptime
     if type_name == STRING_NAME or type_name == OPT_STRING_NAME:
