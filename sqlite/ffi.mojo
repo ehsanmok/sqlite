@@ -3,7 +3,7 @@
 All sqlite3 handles (``sqlite3*`` and ``sqlite3_stmt*``) are stored as
 ``Int`` (pointer address).  Input C strings are passed as ``Int`` via
 ``unsafe_ptr() → Int`` cast.  Output C-string return values are received
-as ``UnsafePointer[UInt8, MutExternalOrigin]`` and immediately copied
+as ``UnsafePointer[UInt8, MutUntrackedOrigin]`` and immediately copied
 into owned ``String`` values via ``StringSlice``.
 
 The library is loaded at runtime via ``OwnedDLHandle`` so Mojo's JIT
@@ -43,7 +43,7 @@ comptime SQLITE_NULL    = 5
 # -----------------------------------------------------------------------
 
 
-def _ptr_to_string(p: UnsafePointer[UInt8, MutExternalOrigin]) -> String:
+def _ptr_to_string(p: UnsafePointer[UInt8, MutUntrackedOrigin]) -> String:
     """Copy a C string at ``p`` into an owned Mojo ``String``.
 
     Args:
@@ -129,7 +129,7 @@ struct Sqlite3FFI(Movable):
     # -- connection functions ------------------------------------------------
     var _fn_open:   def(Int, Int) thin abi("C") -> Int32
     var _fn_close:  def(Int) thin abi("C") -> Int32
-    var _fn_errmsg: def(Int) thin abi("C") -> UnsafePointer[UInt8, MutExternalOrigin]
+    var _fn_errmsg: def(Int) thin abi("C") -> UnsafePointer[UInt8, MutUntrackedOrigin]
     var _fn_exec:   def(Int, Int, Int, Int, Int) thin abi("C") -> Int32
 
     # -- prepared statement functions ----------------------------------------
@@ -149,7 +149,7 @@ struct Sqlite3FFI(Movable):
     var _fn_col_type:   def(Int, Int32) thin abi("C") -> Int32
     var _fn_col_int64:  def(Int, Int32) thin abi("C") -> Int
     var _fn_col_double: def(Int, Int32) thin abi("C") -> Float64
-    var _fn_col_text:   def(Int, Int32) thin abi("C") -> UnsafePointer[UInt8, MutExternalOrigin]
+    var _fn_col_text:   def(Int, Int32) thin abi("C") -> UnsafePointer[UInt8, MutUntrackedOrigin]
 
     def __init__(out self, lib_path: String = "") raises:
         """Load ``libsqlite3`` and resolve all function pointers.
@@ -178,7 +178,7 @@ struct Sqlite3FFI(Movable):
             "sqlite3_close"
         )
         self._fn_errmsg = self._lib.get_function[
-            def(Int) thin abi("C") -> UnsafePointer[UInt8, MutExternalOrigin]
+            def(Int) thin abi("C") -> UnsafePointer[UInt8, MutUntrackedOrigin]
         ]("sqlite3_errmsg")
         self._fn_exec = self._lib.get_function[
             def(Int, Int, Int, Int, Int) thin abi("C") -> Int32
@@ -220,7 +220,7 @@ struct Sqlite3FFI(Movable):
             def(Int, Int32) thin abi("C") -> Float64
         ]("sqlite3_column_double")
         self._fn_col_text = self._lib.get_function[
-            def(Int, Int32) thin abi("C") -> UnsafePointer[UInt8, MutExternalOrigin]
+            def(Int, Int32) thin abi("C") -> UnsafePointer[UInt8, MutUntrackedOrigin]
         ]("sqlite3_column_text")
 
     # -- connection ----------------------------------------------------------
