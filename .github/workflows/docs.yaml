@@ -27,6 +27,11 @@ jobs:
         uses: prefix-dev/setup-pixi@v0.9.4
         with:
           environments: dev
+          # Pin pixi: the default "latest" ships a build-api-version >=5
+          # that this repo's pixi-build-rattler-build 0.3.13 backend can't
+          # satisfy, failing the solve with "no candidates were found".
+          # 0.70.2 is the newest pixi compatible with that backend.
+          pixi-version: v0.70.2
           cache: false
           post-cleanup: false
 
