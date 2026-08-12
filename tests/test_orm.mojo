@@ -239,7 +239,7 @@ def test_large_string_field() raises:
     insert[Person](db, "persons", Person(name=big, age=0, score=0.0, active=False))
 
     var rows = query[Person](db, "persons")
-    assert_equal(len(rows[0].name), 2000)
+    assert_equal(rows[0].name.byte_length(), 2000)
     assert_equal(rows[0].name, big)
 
 

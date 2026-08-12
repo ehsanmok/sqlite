@@ -161,7 +161,7 @@ def prop_bind_text_roundtrips(s: String) raises -> Bool:
     # bind_text stores the full string, but column_text returns a C string
     # (null-terminated), so column retrieval truncates at the first NUL byte.
     # Strings containing NUL therefore cannot roundtrip correctly.
-    for i in range(len(s)):
+    for i in range(s.byte_length()):
         if s.unsafe_ptr()[i] == 0:
             return True
     var db = Database(":memory:")

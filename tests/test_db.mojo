@@ -372,7 +372,7 @@ def test_bind_text_large() raises:
 
     var q = db.prepare("SELECT val FROM t")
     ref row = q.step().value()
-    assert_equal(len(row.text_val(0)), 1000, "Large string length mismatch")
+    assert_equal(row.text_val(0).byte_length(), 1000, "Large string length mismatch")
     assert_equal(row.text_val(0), big)
 
 

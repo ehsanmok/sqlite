@@ -13,10 +13,10 @@ never needs to resolve SQLite symbols at compile time, eliminating the
 Do not call ``Sqlite3FFI`` methods from user code -- use ``db.mojo``.
 """
 
-from std.ffi import OwnedDLHandle, RTLD
+from std.ffi import OwnedDLHandle, RTLD, CStringSlice
 from std.os import getenv
 from std.sys.info import CompilationTarget
-from std.memory import UnsafePointer
+from std.memory import UnsafePointer, Pointer
 
 
 # -----------------------------------------------------------------------
@@ -43,19 +43,39 @@ comptime SQLITE_NULL    = 5
 # -----------------------------------------------------------------------
 
 
-def _ptr_to_string(p: UnsafePointer[UInt8, MutUntrackedOrigin]) -> String:
-    """Copy a C string at ``p`` into an owned Mojo ``String``.
+def _ptr_to_string(addr: Int) -> String:
+    """Copy a C string at ``addr`` into an owned Mojo ``String``.
 
     Args:
-        p: Pointer to a null-terminated UTF-8 string returned by SQLite.
-           Null pointer returns an empty string.
+        addr: Address of a null-terminated UTF-8 string returned by
+              SQLite, as a raw ``Int`` (pointers are non-null by design
+              in this Mojo version, so a nullable C return value must
+              be carried as its address rather than as a pointer).
+              A zero address returns an empty string.
 
     Returns:
-        Owned ``String`` copy, or empty string for null pointers.
+        Owned ``String`` copy, or empty string for null addresses.
     """
-    if not p:
+    if addr == 0:
         return String("")
-    return String(StringSlice(unsafe_from_utf8_ptr=p))
+    var p = UnsafePointer[Int8, MutUntrackedOrigin](unsafe_from_address=addr)
+    return String(StringSlice(unsafe_from_utf8=CStringSlice(unsafe_from_ptr=p)))
+
+
+def _dl_sym[
+    FT: TrivialRegisterPassable
+](lib: OwnedDLHandle, name: String) raises -> FT:
+    """Look up a C-ABI function symbol as a plain callable value.
+
+    Replaces the ``lib.get_function[FT](name)`` idiom, whose return
+    type (an origin-bound ``_DLCallable``) can no longer be invoked
+    directly or stored across scopes.
+    """
+    var opt = lib.get_symbol[FT](name)
+    if not opt:
+        raise Error("sqlite: FFI symbol not found: " + name)
+    var addr: Int = Int(opt.value())
+    return Pointer(to=addr).unsafe_bitcast[FT]()[]
 
 
 def _find_sqlite3_library() -> String:
@@ -129,7 +149,7 @@ struct Sqlite3FFI(Movable):
     # -- connection functions ------------------------------------------------
     var _fn_open:   def(Int, Int) thin abi("C") -> Int32
     var _fn_close:  def(Int) thin abi("C") -> Int32
-    var _fn_errmsg: def(Int) thin abi("C") -> UnsafePointer[UInt8, MutUntrackedOrigin]
+    var _fn_errmsg: def(Int) thin abi("C") -> Int
     var _fn_exec:   def(Int, Int, Int, Int, Int) thin abi("C") -> Int32
 
     # -- prepared statement functions ----------------------------------------
@@ -149,7 +169,7 @@ struct Sqlite3FFI(Movable):
     var _fn_col_type:   def(Int, Int32) thin abi("C") -> Int32
     var _fn_col_int64:  def(Int, Int32) thin abi("C") -> Int
     var _fn_col_double: def(Int, Int32) thin abi("C") -> Float64
-    var _fn_col_text:   def(Int, Int32) thin abi("C") -> UnsafePointer[UInt8, MutUntrackedOrigin]
+    var _fn_col_text:   def(Int, Int32) thin abi("C") -> Int
 
     def __init__(out self, lib_path: String = "") raises:
         """Load ``libsqlite3`` and resolve all function pointers.
@@ -171,57 +191,57 @@ struct Sqlite3FFI(Movable):
         # The library stays resident until process exit regardless.
         self._lib = OwnedDLHandle(path, RTLD.NOW | RTLD.GLOBAL | RTLD.NODELETE)
 
-        self._fn_open = self._lib.get_function[def(Int, Int) thin abi("C") -> Int32](
-            "sqlite3_open"
+        self._fn_open = _dl_sym[def(Int, Int) thin abi("C") -> Int32](
+            self._lib, "sqlite3_open"
         )
-        self._fn_close = self._lib.get_function[def(Int) thin abi("C") -> Int32](
-            "sqlite3_close"
+        self._fn_close = _dl_sym[def(Int) thin abi("C") -> Int32](
+            self._lib, "sqlite3_close"
         )
-        self._fn_errmsg = self._lib.get_function[
-            def(Int) thin abi("C") -> UnsafePointer[UInt8, MutUntrackedOrigin]
-        ]("sqlite3_errmsg")
-        self._fn_exec = self._lib.get_function[
+        self._fn_errmsg = _dl_sym[def(Int) thin abi("C") -> Int](
+            self._lib, "sqlite3_errmsg"
+        )
+        self._fn_exec = _dl_sym[
             def(Int, Int, Int, Int, Int) thin abi("C") -> Int32
-        ]("sqlite3_exec")
-        self._fn_prepare = self._lib.get_function[
+        ](self._lib, "sqlite3_exec")
+        self._fn_prepare = _dl_sym[
             def(Int, Int, Int32, Int, Int) thin abi("C") -> Int32
-        ]("sqlite3_prepare_v2")
-        self._fn_step = self._lib.get_function[def(Int) thin abi("C") -> Int32](
-            "sqlite3_step"
+        ](self._lib, "sqlite3_prepare_v2")
+        self._fn_step = _dl_sym[def(Int) thin abi("C") -> Int32](
+            self._lib, "sqlite3_step"
         )
-        self._fn_reset = self._lib.get_function[def(Int) thin abi("C") -> Int32](
-            "sqlite3_reset"
+        self._fn_reset = _dl_sym[def(Int) thin abi("C") -> Int32](
+            self._lib, "sqlite3_reset"
         )
-        self._fn_finalize = self._lib.get_function[def(Int) thin abi("C") -> Int32](
-            "sqlite3_finalize"
+        self._fn_finalize = _dl_sym[def(Int) thin abi("C") -> Int32](
+            self._lib, "sqlite3_finalize"
         )
-        self._fn_bind_int = self._lib.get_function[
+        self._fn_bind_int = _dl_sym[
             def(Int, Int32, Int) thin abi("C") -> Int32
-        ]("sqlite3_bind_int64")
-        self._fn_bind_double = self._lib.get_function[
+        ](self._lib, "sqlite3_bind_int64")
+        self._fn_bind_double = _dl_sym[
             def(Int, Int32, Float64) thin abi("C") -> Int32
-        ]("sqlite3_bind_double")
-        self._fn_bind_text = self._lib.get_function[
+        ](self._lib, "sqlite3_bind_double")
+        self._fn_bind_text = _dl_sym[
             def(Int, Int32, Int, Int32, Int) thin abi("C") -> Int32
-        ]("sqlite3_bind_text")
-        self._fn_bind_null = self._lib.get_function[def(Int, Int32) thin abi("C") -> Int32](
-            "sqlite3_bind_null"
+        ](self._lib, "sqlite3_bind_text")
+        self._fn_bind_null = _dl_sym[def(Int, Int32) thin abi("C") -> Int32](
+            self._lib, "sqlite3_bind_null"
         )
-        self._fn_col_count = self._lib.get_function[def(Int) thin abi("C") -> Int32](
-            "sqlite3_column_count"
+        self._fn_col_count = _dl_sym[def(Int) thin abi("C") -> Int32](
+            self._lib, "sqlite3_column_count"
         )
-        self._fn_col_type = self._lib.get_function[def(Int, Int32) thin abi("C") -> Int32](
-            "sqlite3_column_type"
+        self._fn_col_type = _dl_sym[def(Int, Int32) thin abi("C") -> Int32](
+            self._lib, "sqlite3_column_type"
         )
-        self._fn_col_int64 = self._lib.get_function[def(Int, Int32) thin abi("C") -> Int](
-            "sqlite3_column_int64"
+        self._fn_col_int64 = _dl_sym[def(Int, Int32) thin abi("C") -> Int](
+            self._lib, "sqlite3_column_int64"
         )
-        self._fn_col_double = self._lib.get_function[
+        self._fn_col_double = _dl_sym[
             def(Int, Int32) thin abi("C") -> Float64
-        ]("sqlite3_column_double")
-        self._fn_col_text = self._lib.get_function[
-            def(Int, Int32) thin abi("C") -> UnsafePointer[UInt8, MutUntrackedOrigin]
-        ]("sqlite3_column_text")
+        ](self._lib, "sqlite3_column_double")
+        self._fn_col_text = _dl_sym[def(Int, Int32) thin abi("C") -> Int](
+            self._lib, "sqlite3_column_text"
+        )
 
     # -- connection ----------------------------------------------------------
 
