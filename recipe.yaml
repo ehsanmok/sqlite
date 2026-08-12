@@ -1,6 +1,6 @@
 package:
   name: sqlite
-  version: "0.1.3"
+  version: "0.2.0"
 
 source:
   path: .
@@ -12,9 +12,9 @@ build:
 
 requirements:
   host:
-    - mojo ==1.0.0b2
+    - mojo >=1.0.0,<1.1.0
   run:
-    - mojo ==1.0.0b2
+    - mojo >=1.0.0,<1.1.0
 
 about:
   summary: SQLite bindings with morph ORM integration for Mojo

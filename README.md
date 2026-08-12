@@ -130,11 +130,11 @@ Add sqlite to your project's `pixi.toml`:
 
 ```toml
 [workspace]
-channels = ["https://conda.modular.com/max-nightly", "conda-forge"]
+channels = ["https://conda.modular.com/max", "conda-forge"]
 preview = ["pixi-build"]
 
 [dependencies]
-sqlite = { git = "https://github.com/ehsanmok/sqlite.git", tag = "v0.1.1" }
+sqlite = { git = "https://github.com/ehsanmok/sqlite.git", tag = "v0.2.0" }
 ```
 
 Then run:
