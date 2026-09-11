@@ -11,17 +11,28 @@ name = "sqlite"
 version = "0.2.0"
 
 [package.build]
-backend = { name = "pixi-build-rattler-build", version = "==0.3.13" }
+# Lower bound only, deliberately.
+#
+# A build backend declares which `pixi-build-api-version` it speaks and
+# pixi provides that as a virtual package, so matching backend to client
+# is the solver's job. An exact pin takes that choice away: `==0.3.13`
+# speaks API 4, and every pixi newer than 0.70.2 provides >= 5, so
+# resolution failed outright with "pixi-build-api-version >=4,<5, for
+# which no candidates were found".
+#
+# A range lets pixi 0.70.x keep picking 0.3.13 and newer pixi pick a
+# 0.4.x that speaks its API.
+backend = { name = "pixi-build-rattler-build", version = ">=0.3.13" }
 
 [dependencies]
 mojo = ">=1.0.0,<1.1.0"
-morph = { git = "https://github.com/ehsanmok/morph.git", tag = "v0.2.0" }
+morph = { git = "https://github.com/ehsanmok/morph.git", branch = "main" }
 sqlite = ">=3.45"
 
 [feature.dev.dependencies]
 pre-commit = ">=4.2.0,<5"
-mojodoc = { git = "https://github.com/ehsanmok/mojodoc.git", tag = "v0.1.0" }
-mozz = { git = "https://github.com/ehsanmok/mozz.git", tag = "v0.2.0" }
+mojodoc = { git = "https://github.com/ehsanmok/mojodoc.git", branch = "main" }
+mozz = { git = "https://github.com/ehsanmok/mozz.git", branch = "main" }
 
 [activation]
 env = { MOJO_FLAGS = "-I ." }
