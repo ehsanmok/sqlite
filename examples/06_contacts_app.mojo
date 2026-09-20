@@ -22,7 +22,7 @@ from sqlite.orm import create_table, insert, query
 
 
 @fieldwise_init
-struct Contact(Defaultable, Movable, Copyable):
+struct Contact(Defaultable, Copyable):
     """One entry in a contacts list.
 
     Fields:

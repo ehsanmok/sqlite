@@ -98,9 +98,9 @@ struct Transaction(Movable):
         Use ``SAVEPOINT`` directly if you need nesting.
     """
 
-    var _ffi:    Sqlite3FFI
-    var _handle: Int   # sqlite3 connection handle (non-owning borrow)
-    var _done:   Bool  # True after commit() or rollback(); silences __del__
+    var _ffi: Sqlite3FFI
+    var _handle: Int  # sqlite3 connection handle (non-owning borrow)
+    var _done: Bool  # True after commit() or rollback(); silences __deinit__
 
     def __init__(out self, handle: Int) raises:
         """Begin a new transaction on ``handle``.
@@ -111,12 +111,12 @@ struct Transaction(Movable):
         Raises:
             Error: If ``BEGIN`` fails (e.g. a transaction is already active).
         """
-        self._ffi    = Sqlite3FFI()
+        self._ffi = Sqlite3FFI()
         self._handle = handle
-        self._done   = False
+        self._done = False
         self._ffi.exec(handle, "BEGIN")
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         """Issue ``ROLLBACK`` if the transaction was neither committed nor rolled back.
 
         Errors from the implicit ``ROLLBACK`` are swallowed so destructors
@@ -218,11 +218,11 @@ struct Row(Movable):
     Column indices are 0-based throughout.
     """
 
-    var _ncols:  Int
-    var _types:  List[Int]
-    var _ints:   List[Int]
+    var _ncols: Int
+    var _types: List[Int]
+    var _ints: List[Int]
     var _floats: List[Float64]
-    var _texts:  List[String]
+    var _texts: List[String]
 
     def __init__(
         out self,
@@ -241,11 +241,11 @@ struct Row(Movable):
             floats: Per-column float values (0.0 for non-float columns).
             texts:  Per-column text values (empty for non-text columns).
         """
-        self._ncols  = ncols
-        self._types  = types.copy()
-        self._ints   = ints.copy()
+        self._ncols = ncols
+        self._types = types.copy()
+        self._ints = ints.copy()
         self._floats = floats.copy()
-        self._texts  = texts.copy()
+        self._texts = texts.copy()
 
     def num_cols(self) -> Int:
         """Return the number of columns in this row.
@@ -312,8 +312,8 @@ struct Statement(Movable):
     Parameters use 1-based indexing (as in the SQLite C API).
     """
 
-    var _ffi:    Sqlite3FFI
-    var _db:     Int
+    var _ffi: Sqlite3FFI
+    var _db: Int
     var _handle: Int
 
     def __init__(out self, db: Int, sql: String) raises:
@@ -326,11 +326,11 @@ struct Statement(Movable):
         Raises:
             Error: If the SQL fails to compile.
         """
-        self._ffi    = Sqlite3FFI()
-        self._db     = db
+        self._ffi = Sqlite3FFI()
+        self._db = db
         self._handle = self._ffi.prepare_v2(db, sql)
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         """Finalize the statement and release its resources."""
         self._ffi.finalize(self._handle)
 
@@ -407,11 +407,11 @@ struct Statement(Movable):
         """
         var rc = self._ffi.step(self._handle)
         if rc == SQLITE_ROW:
-            var ncols  = self._ffi.column_count(self._handle)
-            var types  = List[Int]()
-            var ints   = List[Int]()
+            var ncols = self._ffi.column_count(self._handle)
+            var types = List[Int]()
+            var ints = List[Int]()
             var floats = List[Float64]()
-            var texts  = List[String]()
+            var texts = List[String]()
             for col in range(ncols):
                 var t = self._ffi.column_type(self._handle, col)
                 types.append(t)
@@ -435,7 +435,9 @@ struct Statement(Movable):
         if Int(rc) == 101:  # SQLITE_DONE
             return None
         raise Error(
-            "sqlite3_step failed (rc=" + String(Int(rc)) + "): "
+            "sqlite3_step failed (rc="
+            + String(Int(rc))
+            + "): "
             + self._ffi.errmsg(self._db)
         )
 
@@ -458,7 +460,7 @@ struct Database(Movable):
         db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
     """
 
-    var _ffi:    Sqlite3FFI
+    var _ffi: Sqlite3FFI
     var _handle: Int
 
     def __init__(out self, path: String) raises:
@@ -470,10 +472,10 @@ struct Database(Movable):
         Raises:
             Error: If ``sqlite3_open`` fails.
         """
-        self._ffi    = Sqlite3FFI()
+        self._ffi = Sqlite3FFI()
         self._handle = self._ffi.open(path)
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         """Close the database connection."""
         _ = self._ffi.close(self._handle)
 

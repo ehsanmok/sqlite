@@ -19,12 +19,16 @@ from sqlite.db import Database, Row
 
 def _print_row(row_num: Int, row: Row) raises:
     """Print one row; show NULL explicitly for null columns."""
-    var id_s    = "NULL" if row.is_null(0) else String(row.int_val(0))
-    var flag_s  = "NULL" if row.is_null(1) else ("true" if row.int_val(1) != 0 else "false")
-    var real_s  = "NULL" if row.is_null(2) else String(row.float_val(2))
-    var text_s  = "NULL" if row.is_null(3) else row.text_val(3)
+    var id_s = "NULL" if row.is_null(0) else String(row.int_val(0))
+    var flag_s = "NULL" if row.is_null(1) else (
+        "true" if row.int_val(1) != 0 else "false"
+    )
+    var real_s = "NULL" if row.is_null(2) else String(row.float_val(2))
+    var text_s = "NULL" if row.is_null(3) else row.text_val(3)
     print(
-        "row", row_num, "->",
+        "row",
+        row_num,
+        "->",
         "id=" + id_s,
         "flag=" + flag_s,
         "value=" + real_s,
@@ -38,10 +42,10 @@ def main() raises:
     # One column per storage class (BLOB omitted).
     db.execute(
         "CREATE TABLE samples ("
-        "  id    INTEGER,"   # maps to Int in Mojo
-        "  flag  INTEGER,"   # Bool stored as 0/1
-        "  value REAL,"      # maps to Float64
-        "  label TEXT"       # maps to String
+        "  id    INTEGER,"  # maps to Int in Mojo
+        "  flag  INTEGER,"  # Bool stored as 0/1
+        "  value REAL,"  # maps to Float64
+        "  label TEXT"  # maps to String
         ")"
     )
 
@@ -51,7 +55,7 @@ def main() raises:
     var ins = db.prepare("INSERT INTO samples VALUES (?, ?, ?, ?)")
 
     ins.bind_int(1, 42)
-    ins.bind_int(2, 1)                # True -> 1
+    ins.bind_int(2, 1)  # True -> 1
     ins.bind_float(3, Float64(2.718281828))
     ins.bind_text(4, "Euler's number")
     _ = ins.step()

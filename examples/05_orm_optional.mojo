@@ -23,7 +23,7 @@ from sqlite.orm import create_table, insert, query
 
 
 @fieldwise_init
-struct Employee(Defaultable, Movable, Copyable):
+struct Employee(Defaultable, Copyable):
     """A company employee, some fields optional.
 
     Fields:

@@ -45,7 +45,6 @@ Example::
     var rows = query[Person](db, "people")
 """
 
-from std.builtin.rebind import trait_downcast
 from morph.reflect import (
     _Base,
     Morphable,
@@ -164,44 +163,44 @@ def insert[T: Morphable](db: Database, table: String, value: T) raises:
         comptime sql_type = _sql_type_for[field_type]()
 
         if sql_type != "":
-            ref field = trait_downcast[_Base](reflect[T].field_ref[idx](value))
-            var ptr = UnsafePointer(to=field)
+            ref field = reflect[T].field_ref[idx](value)
+            var ptr = Pointer(to=field)
 
             comptime
             if type_name == STRING_NAME:
-                stmt.bind_text(param_idx, ptr.bitcast[String]()[])
+                stmt.bind_text(param_idx, ptr.unsafe_bitcast[String]()[])
             elif type_name == INT_NAME:
-                stmt.bind_int(param_idx, ptr.bitcast[Int]()[])
+                stmt.bind_int(param_idx, ptr.unsafe_bitcast[Int]()[])
             elif type_name == INT64_NAME:
-                stmt.bind_int(param_idx, Int(ptr.bitcast[Int64]()[]))
+                stmt.bind_int(param_idx, Int(ptr.unsafe_bitcast[Int64]()[]))
             elif type_name == FLOAT64_NAME:
-                stmt.bind_float(param_idx, ptr.bitcast[Float64]()[])
+                stmt.bind_float(param_idx, ptr.unsafe_bitcast[Float64]()[])
             elif type_name == FLOAT32_NAME:
                 stmt.bind_float(
-                    param_idx, Float64(ptr.bitcast[Float32]()[])
+                    param_idx, Float64(ptr.unsafe_bitcast[Float32]()[])
                 )
             elif type_name == BOOL_NAME:
-                stmt.bind_int(param_idx, 1 if ptr.bitcast[Bool]()[] else 0)
+                stmt.bind_int(param_idx, 1 if ptr.unsafe_bitcast[Bool]()[] else 0)
             elif type_name == OPT_INT_NAME:
-                var opt = ptr.bitcast[Optional[Int]]()[]
+                var opt = ptr.unsafe_bitcast[Optional[Int]]()[]
                 if opt:
                     stmt.bind_int(param_idx, opt.value())
                 else:
                     stmt.bind_null(param_idx)
             elif type_name == OPT_STRING_NAME:
-                var opt = ptr.bitcast[Optional[String]]()[]
+                var opt = ptr.unsafe_bitcast[Optional[String]]()[]
                 if opt:
                     stmt.bind_text(param_idx, opt.value())
                 else:
                     stmt.bind_null(param_idx)
             elif type_name == OPT_FLOAT64_NAME:
-                var opt = ptr.bitcast[Optional[Float64]]()[]
+                var opt = ptr.unsafe_bitcast[Optional[Float64]]()[]
                 if opt:
                     stmt.bind_float(param_idx, opt.value())
                 else:
                     stmt.bind_null(param_idx)
             elif type_name == OPT_BOOL_NAME:
-                var opt = ptr.bitcast[Optional[Bool]]()[]
+                var opt = ptr.unsafe_bitcast[Optional[Bool]]()[]
                 if opt:
                     stmt.bind_int(param_idx, 1 if opt.value() else 0)
                 else:
@@ -218,7 +217,7 @@ def query[T: Morphable & Copyable](
     """Execute ``SELECT * FROM table [WHERE ...]`` and return ``List[T]``.
 
     Each result row is decoded into a fresh ``T()`` instance using the same
-    ``UnsafePointer`` mutation pattern as ``envo/loader.mojo``.
+    ``Pointer`` mutation pattern as ``envo/loader.mojo``.
 
     Parameters:
         T: A ``Morphable`` struct type.
@@ -263,73 +262,76 @@ def query[T: Morphable & Copyable](
             comptime sql_type = _sql_type_for[field_type]()
 
             if sql_type != "":
-                ref field = trait_downcast[_Base](reflect[T].field_ref[idx](item))
-                var ptr = UnsafePointer(to=field)
+                ref field = reflect[T].field_ref[idx](item)
+                comptime assert conforms_to(
+                    type_of(field), _Base
+                ), "sqlite: struct field must be Deinitable & Movable"
+                var ptr = Pointer(to=field)
 
                 if row.is_null(col_idx):
                     comptime
                     if type_name == OPT_INT_NAME:
-                        ptr.destroy_pointee()
-                        ptr.bitcast[Optional[Int]]().init_pointee_move(None)
+                        ptr.unsafe_deinit_pointee()
+                        ptr.unsafe_bitcast[Optional[Int]]().unsafe_write(None)
                     elif type_name == OPT_STRING_NAME:
-                        ptr.destroy_pointee()
-                        ptr.bitcast[Optional[String]]().init_pointee_move(None)
+                        ptr.unsafe_deinit_pointee()
+                        ptr.unsafe_bitcast[Optional[String]]().unsafe_write(None)
                     elif type_name == OPT_FLOAT64_NAME:
-                        ptr.destroy_pointee()
-                        ptr.bitcast[Optional[Float64]]().init_pointee_move(None)
+                        ptr.unsafe_deinit_pointee()
+                        ptr.unsafe_bitcast[Optional[Float64]]().unsafe_write(None)
                     elif type_name == OPT_BOOL_NAME:
-                        ptr.destroy_pointee()
-                        ptr.bitcast[Optional[Bool]]().init_pointee_move(None)
+                        ptr.unsafe_deinit_pointee()
+                        ptr.unsafe_bitcast[Optional[Bool]]().unsafe_write(None)
                 else:
                     comptime
                     if type_name == STRING_NAME:
-                        ptr.destroy_pointee()
-                        ptr.bitcast[String]().init_pointee_move(
+                        ptr.unsafe_deinit_pointee()
+                        ptr.unsafe_bitcast[String]().unsafe_write(
                             row.text_val(col_idx)
                         )
                     elif type_name == INT_NAME:
-                        ptr.destroy_pointee()
-                        ptr.bitcast[Int]().init_pointee_move(
+                        ptr.unsafe_deinit_pointee()
+                        ptr.unsafe_bitcast[Int]().unsafe_write(
                             row.int_val(col_idx)
                         )
                     elif type_name == INT64_NAME:
-                        ptr.destroy_pointee()
-                        ptr.bitcast[Int64]().init_pointee_move(
+                        ptr.unsafe_deinit_pointee()
+                        ptr.unsafe_bitcast[Int64]().unsafe_write(
                             Int64(row.int_val(col_idx))
                         )
                     elif type_name == FLOAT64_NAME:
-                        ptr.destroy_pointee()
-                        ptr.bitcast[Float64]().init_pointee_move(
+                        ptr.unsafe_deinit_pointee()
+                        ptr.unsafe_bitcast[Float64]().unsafe_write(
                             row.float_val(col_idx)
                         )
                     elif type_name == FLOAT32_NAME:
-                        ptr.destroy_pointee()
-                        ptr.bitcast[Float32]().init_pointee_move(
+                        ptr.unsafe_deinit_pointee()
+                        ptr.unsafe_bitcast[Float32]().unsafe_write(
                             Float32(row.float_val(col_idx))
                         )
                     elif type_name == BOOL_NAME:
-                        ptr.destroy_pointee()
-                        ptr.bitcast[Bool]().init_pointee_move(
+                        ptr.unsafe_deinit_pointee()
+                        ptr.unsafe_bitcast[Bool]().unsafe_write(
                             row.int_val(col_idx) != 0
                         )
                     elif type_name == OPT_INT_NAME:
-                        ptr.destroy_pointee()
-                        ptr.bitcast[Optional[Int]]().init_pointee_move(
+                        ptr.unsafe_deinit_pointee()
+                        ptr.unsafe_bitcast[Optional[Int]]().unsafe_write(
                             row.int_val(col_idx)
                         )
                     elif type_name == OPT_STRING_NAME:
-                        ptr.destroy_pointee()
-                        ptr.bitcast[Optional[String]]().init_pointee_move(
+                        ptr.unsafe_deinit_pointee()
+                        ptr.unsafe_bitcast[Optional[String]]().unsafe_write(
                             row.text_val(col_idx)
                         )
                     elif type_name == OPT_FLOAT64_NAME:
-                        ptr.destroy_pointee()
-                        ptr.bitcast[Optional[Float64]]().init_pointee_move(
+                        ptr.unsafe_deinit_pointee()
+                        ptr.unsafe_bitcast[Optional[Float64]]().unsafe_write(
                             row.float_val(col_idx)
                         )
                     elif type_name == OPT_BOOL_NAME:
-                        ptr.destroy_pointee()
-                        ptr.bitcast[Optional[Bool]]().init_pointee_move(
+                        ptr.unsafe_deinit_pointee()
+                        ptr.unsafe_bitcast[Optional[Bool]]().unsafe_write(
                             row.int_val(col_idx) != 0
                         )
 

@@ -38,7 +38,7 @@ from mozz.rng import Xoshiro256
 
 
 @fieldwise_init
-struct TaggedValue(Defaultable, Movable, Copyable):
+struct TaggedValue(Copyable, Defaultable):
     """Minimal struct used in ORM property tests."""
 
     var tag: String
@@ -162,7 +162,7 @@ def prop_bind_text_roundtrips(s: String) raises -> Bool:
     # (null-terminated), so column retrieval truncates at the first NUL byte.
     # Strings containing NUL therefore cannot roundtrip correctly.
     for i in range(s.byte_length()):
-        if s.unsafe_ptr()[i] == 0:
+        if s.unsafe_ptr()[unsafe_offset=i] == 0:
             return True
     var db = Database(":memory:")
     db.execute("CREATE TABLE t (v TEXT)")

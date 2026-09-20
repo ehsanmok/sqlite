@@ -25,7 +25,7 @@ version = "0.2.0"
 backend = { name = "pixi-build-rattler-build", version = ">=0.3.13" }
 
 [dependencies]
-mojo = ">=1.0.0,<1.1.0"
+mojo = ">=1.1.0,<2.0.0"
 morph = { git = "https://github.com/ehsanmok/morph.git", branch = "main" }
 sqlite = ">=3.45"
 

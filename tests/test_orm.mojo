@@ -25,7 +25,7 @@ from sqlite.orm import create_table, insert, query
 
 
 @fieldwise_init
-struct Person(Defaultable, Movable, Copyable):
+struct Person(Defaultable, Copyable):
     """Struct with all primitive field types."""
 
     var name: String
@@ -47,7 +47,7 @@ struct Person(Defaultable, Movable, Copyable):
 
 
 @fieldwise_init
-struct Record(Defaultable, Movable, Copyable):
+struct Record(Defaultable, Copyable):
     """Struct with Optional fields (Integer and String)."""
 
     var label: String
@@ -66,7 +66,7 @@ struct Record(Defaultable, Movable, Copyable):
 
 
 @fieldwise_init
-struct Metrics(Defaultable, Movable, Copyable):
+struct Metrics(Defaultable, Copyable):
     """Struct with Optional Float64 and Optional Bool fields."""
 
     var tag: String
@@ -85,7 +85,7 @@ struct Metrics(Defaultable, Movable, Copyable):
 
 
 @fieldwise_init
-struct Sensor(Defaultable, Movable, Copyable):
+struct Sensor(Defaultable, Copyable):
     """Struct with a Float32 field to verify REAL column mapping."""
 
     var name: String

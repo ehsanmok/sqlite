@@ -32,7 +32,7 @@ def main() raises:
     while True:
         var maybe_row = stmt.step()
         if not maybe_row:
-            break          # SQLITE_DONE — no more rows
+            break  # SQLITE_DONE — no more rows
 
         # Row borrows from the statement; take a reference to avoid a copy.
         ref row = maybe_row.value()

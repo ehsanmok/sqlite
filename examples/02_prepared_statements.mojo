@@ -20,8 +20,8 @@ def main() raises:
         "  id    INTEGER,"
         "  name  TEXT,"
         "  price REAL,"
-        "  sku   TEXT"   # nullable
-        ")"
+        "  sku   TEXT"
+        ")"  # nullable
     )
 
     # -----------------------------------------------------------------------
@@ -58,16 +58,14 @@ def main() raises:
         ins.bind_int(1, i + 3)
         ins.bind_text(2, names[i])
         ins.bind_float(3, Float64(i + 1) * 5.0)
-        ins.bind_null(4)   # no SKU for these
+        ins.bind_null(4)  # no SKU for these
         _ = ins.step()
         ins.reset()
 
     # -----------------------------------------------------------------------
     # Query all rows.
     # -----------------------------------------------------------------------
-    var q = db.prepare(
-        "SELECT id, name, price, sku FROM products ORDER BY id"
-    )
+    var q = db.prepare("SELECT id, name, price, sku FROM products ORDER BY id")
 
     print("id | name   | price  | sku")
     print("---+--------+--------+--------")
@@ -80,9 +78,12 @@ def main() raises:
 
         var sku = "NULL" if row.is_null(3) else row.text_val(3)
         print(
-            row.int_val(0), "|",
-            row.text_val(1), "|",
-            row.float_val(2), "|",
+            row.int_val(0),
+            "|",
+            row.text_val(1),
+            "|",
+            row.float_val(2),
+            "|",
             sku,
         )
 

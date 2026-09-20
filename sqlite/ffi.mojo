@@ -3,7 +3,7 @@
 All sqlite3 handles (``sqlite3*`` and ``sqlite3_stmt*``) are stored as
 ``Int`` (pointer address).  Input C strings are passed as ``Int`` via
 ``unsafe_ptr() → Int`` cast.  Output C-string return values are received
-as ``UnsafePointer[UInt8, MutUntrackedOrigin]`` and immediately copied
+as ``Pointer[UInt8, MutUntrackedOrigin]`` and immediately copied
 into owned ``String`` values via ``StringSlice``.
 
 The library is loaded at runtime via ``OwnedDLHandle`` so Mojo's JIT
@@ -13,18 +13,18 @@ never needs to resolve SQLite symbols at compile time, eliminating the
 Do not call ``Sqlite3FFI`` methods from user code -- use ``db.mojo``.
 """
 
-from std.ffi import OwnedDLHandle, RTLD, CStringSlice
+from std.ffi import OwnedDLHandle, RTLD, CStringSpan
 from std.os import getenv
 from std.sys.info import CompilationTarget
-from std.memory import UnsafePointer, Pointer
+from std.memory import Pointer
 
 
 # -----------------------------------------------------------------------
 # Result codes
 # -----------------------------------------------------------------------
 
-comptime SQLITE_OK   = 0
-comptime SQLITE_ROW  = 100
+comptime SQLITE_OK = 0
+comptime SQLITE_ROW = 100
 comptime SQLITE_DONE = 101
 
 # -----------------------------------------------------------------------
@@ -32,10 +32,10 @@ comptime SQLITE_DONE = 101
 # -----------------------------------------------------------------------
 
 comptime SQLITE_INTEGER = 1
-comptime SQLITE_FLOAT   = 2
-comptime SQLITE_TEXT    = 3
-comptime SQLITE_BLOB    = 4
-comptime SQLITE_NULL    = 5
+comptime SQLITE_FLOAT = 2
+comptime SQLITE_TEXT = 3
+comptime SQLITE_BLOB = 4
+comptime SQLITE_NULL = 5
 
 
 # -----------------------------------------------------------------------
@@ -58,8 +58,8 @@ def _ptr_to_string(addr: Int) -> String:
     """
     if addr == 0:
         return String("")
-    var p = UnsafePointer[Int8, MutUntrackedOrigin](unsafe_from_address=addr)
-    return String(StringSlice(unsafe_from_utf8=CStringSlice(unsafe_from_ptr=p)))
+    var p = Pointer[Int8, MutUntrackedOrigin](unsafe_from_address=addr)
+    return String(StringSlice(unsafe_from_utf8=CStringSpan(unsafe_from_ptr=p)))
 
 
 def _dl_sym[
@@ -127,7 +127,7 @@ struct Sqlite3FFI(Movable):
     every function pointer via ``get_function``.  All opaque pointer arguments
     (``sqlite3*``, ``sqlite3_stmt*``) are represented as ``Int`` (64-bit on
     all supported platforms), matching the C ABI on x86-64 and arm64 without
-    requiring ``UnsafePointer`` type annotations.
+    requiring ``Pointer`` type annotations.
 
     Each ``Database``, ``Statement``, and ``Transaction`` owns one instance.
     The OS reference-counts the underlying shared library, so multiple
@@ -147,29 +147,29 @@ struct Sqlite3FFI(Movable):
     var _lib: OwnedDLHandle
 
     # -- connection functions ------------------------------------------------
-    var _fn_open:   def(Int, Int) thin abi("C") -> Int32
-    var _fn_close:  def(Int) thin abi("C") -> Int32
+    var _fn_open: def(Int, Int) thin abi("C") -> Int32
+    var _fn_close: def(Int) thin abi("C") -> Int32
     var _fn_errmsg: def(Int) thin abi("C") -> Int
-    var _fn_exec:   def(Int, Int, Int, Int, Int) thin abi("C") -> Int32
+    var _fn_exec: def(Int, Int, Int, Int, Int) thin abi("C") -> Int32
 
     # -- prepared statement functions ----------------------------------------
-    var _fn_prepare:  def(Int, Int, Int32, Int, Int) thin abi("C") -> Int32
-    var _fn_step:     def(Int) thin abi("C") -> Int32
-    var _fn_reset:    def(Int) thin abi("C") -> Int32
+    var _fn_prepare: def(Int, Int, Int32, Int, Int) thin abi("C") -> Int32
+    var _fn_step: def(Int) thin abi("C") -> Int32
+    var _fn_reset: def(Int) thin abi("C") -> Int32
     var _fn_finalize: def(Int) thin abi("C") -> Int32
 
     # -- parameter binding (1-based index) -----------------------------------
-    var _fn_bind_int:    def(Int, Int32, Int) thin abi("C") -> Int32
+    var _fn_bind_int: def(Int, Int32, Int) thin abi("C") -> Int32
     var _fn_bind_double: def(Int, Int32, Float64) thin abi("C") -> Int32
-    var _fn_bind_text:   def(Int, Int32, Int, Int32, Int) thin abi("C") -> Int32
-    var _fn_bind_null:   def(Int, Int32) thin abi("C") -> Int32
+    var _fn_bind_text: def(Int, Int32, Int, Int32, Int) thin abi("C") -> Int32
+    var _fn_bind_null: def(Int, Int32) thin abi("C") -> Int32
 
     # -- column reading (0-based index) --------------------------------------
-    var _fn_col_count:  def(Int) thin abi("C") -> Int32
-    var _fn_col_type:   def(Int, Int32) thin abi("C") -> Int32
-    var _fn_col_int64:  def(Int, Int32) thin abi("C") -> Int
+    var _fn_col_count: def(Int) thin abi("C") -> Int32
+    var _fn_col_type: def(Int, Int32) thin abi("C") -> Int32
+    var _fn_col_int64: def(Int, Int32) thin abi("C") -> Int
     var _fn_col_double: def(Int, Int32) thin abi("C") -> Float64
-    var _fn_col_text:   def(Int, Int32) thin abi("C") -> Int
+    var _fn_col_text: def(Int, Int32) thin abi("C") -> Int
 
     def __init__(out self, lib_path: String = "") raises:
         """Load ``libsqlite3`` and resolve all function pointers.
@@ -236,9 +236,9 @@ struct Sqlite3FFI(Movable):
         self._fn_col_int64 = _dl_sym[def(Int, Int32) thin abi("C") -> Int](
             self._lib, "sqlite3_column_int64"
         )
-        self._fn_col_double = _dl_sym[
-            def(Int, Int32) thin abi("C") -> Float64
-        ](self._lib, "sqlite3_column_double")
+        self._fn_col_double = _dl_sym[def(Int, Int32) thin abi("C") -> Float64](
+            self._lib, "sqlite3_column_double"
+        )
         self._fn_col_text = _dl_sym[def(Int, Int32) thin abi("C") -> Int](
             self._lib, "sqlite3_column_text"
         )
@@ -269,7 +269,7 @@ struct Sqlite3FFI(Movable):
         var src = filename.unsafe_ptr()
         var buf = List[UInt8](capacity=n + 1)
         for i in range(n):
-            buf.append(src[i])
+            buf.append(src[unsafe_offset=i])
         buf.append(0)  # explicit null terminator
         var db_out = List[Int](capacity=1)
         db_out.append(0)
@@ -279,7 +279,13 @@ struct Sqlite3FFI(Movable):
         )
         _ = buf^  # keep buf alive past the FFI call
         if Int(rc) != SQLITE_OK:
-            raise Error("sqlite3_open('" + filename + "') failed (sqlite3 rc=" + String(Int(rc)) + ")")
+            raise Error(
+                "sqlite3_open('"
+                + filename
+                + "') failed (sqlite3 rc="
+                + String(Int(rc))
+                + ")"
+            )
         return db_out[0]
 
     def close(self, db: Int) abi("C") -> Int32:
@@ -327,7 +333,7 @@ struct Sqlite3FFI(Movable):
         var src = sql.unsafe_ptr()
         var buf = List[UInt8](capacity=n + 1)
         for i in range(n):
-            buf.append(src[i])
+            buf.append(src[unsafe_offset=i])
         buf.append(0)  # explicit null terminator
         var rc = self._fn_exec(
             db, Int(buf.unsafe_ptr()), Int(0), Int(0), Int(0)
@@ -336,9 +342,13 @@ struct Sqlite3FFI(Movable):
         if rc != SQLITE_OK:
             var db_err = self.errmsg(db)
             raise Error(
-                "sqlite3_exec failed: " + sql
-                + " -- " + db_err
-                + " (sqlite3 rc=" + String(Int(rc)) + ")"
+                "sqlite3_exec failed: "
+                + sql
+                + " -- "
+                + db_err
+                + " (sqlite3 rc="
+                + String(Int(rc))
+                + ")"
             )
 
     # -- prepared statements -------------------------------------------------
@@ -373,17 +383,21 @@ struct Sqlite3FFI(Movable):
         var rc = self._fn_prepare(
             db,
             Int(s.unsafe_ptr()),
-            sql_len,           # explicit byte count — do not use -1
+            sql_len,  # explicit byte count — do not use -1
             Int(stmt_out.unsafe_ptr()),
             Int(0),
         )
-        _ = s^                 # keep s alive until after the FFI call
+        _ = s^  # keep s alive until after the FFI call
         if Int(rc) != SQLITE_OK:
             var db_err = self.errmsg(db)
             raise Error(
-                "sqlite3_prepare_v2 failed: " + sql
-                + " -- " + db_err
-                + " (sqlite3 rc=" + String(Int(rc)) + ")"
+                "sqlite3_prepare_v2 failed: "
+                + sql
+                + " -- "
+                + db_err
+                + " (sqlite3 rc="
+                + String(Int(rc))
+                + ")"
             )
         return stmt_out[0]
 

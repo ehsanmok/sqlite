@@ -36,13 +36,15 @@ from sqlite import Database, Transaction
 
 def setup_accounts(mut db: Database) raises:
     """Create and seed an ``accounts`` table."""
-    db.execute("""
+    db.execute(
+        """
         CREATE TABLE accounts (
             id      INTEGER PRIMARY KEY,
             name    TEXT    NOT NULL,
             balance INTEGER NOT NULL
         )
-    """)
+    """
+    )
     db.execute("INSERT INTO accounts VALUES (1, 'Alice', 1000)")
     db.execute("INSERT INTO accounts VALUES (2, 'Bob',    500)")
 
@@ -56,9 +58,12 @@ def show_balances(db: Database) raises:
             break
         ref r = row.value()
         print(
-            "  id=" + String(r.int_val(0))
-            + "  name=" + r.text_val(1)
-            + "  balance=" + String(r.int_val(2))
+            "  id="
+            + String(r.int_val(0))
+            + "  name="
+            + r.text_val(1)
+            + "  balance="
+            + String(r.int_val(2))
         )
 
 
@@ -100,23 +105,31 @@ def transfer(mut db: Database, from_id: Int, to_id: Int, amount: Int) raises:
     var from_balance = get_balance(db, from_id)
     if from_balance < amount:
         raise Error(
-            "insufficient funds: balance=" + String(from_balance)
-            + " < amount=" + String(amount)
+            "insufficient funds: balance="
+            + String(from_balance)
+            + " < amount="
+            + String(amount)
         )
 
     with db.transaction():
         db.execute(
             "UPDATE accounts SET balance = balance - "
-            + String(amount) + " WHERE id = " + String(from_id)
+            + String(amount)
+            + " WHERE id = "
+            + String(from_id)
         )
         db.execute(
             "UPDATE accounts SET balance = balance + "
-            + String(amount) + " WHERE id = " + String(to_id)
+            + String(amount)
+            + " WHERE id = "
+            + String(to_id)
         )
     # → COMMIT on success; if either UPDATE raised, ROLLBACK + re-raise
 
 
-def transfer_manual(mut db: Database, from_id: Int, to_id: Int, amount: Int) raises:
+def transfer_manual(
+    mut db: Database, from_id: Int, to_id: Int, amount: Int
+) raises:
     """Same transfer, written with the manual ``var tx`` pattern for comparison.
 
     Demonstrates that the explicit ``try/except/rollback`` style is also
@@ -138,23 +151,29 @@ def transfer_manual(mut db: Database, from_id: Int, to_id: Int, amount: Int) rai
     var from_balance = get_balance(db, from_id)
     if from_balance < amount:
         raise Error(
-            "insufficient funds: balance=" + String(from_balance)
-            + " < amount=" + String(amount)
+            "insufficient funds: balance="
+            + String(from_balance)
+            + " < amount="
+            + String(amount)
         )
 
-    var tx = db.transaction()   # BEGIN
+    var tx = db.transaction()  # BEGIN
     try:
         db.execute(
             "UPDATE accounts SET balance = balance - "
-            + String(amount) + " WHERE id = " + String(from_id)
+            + String(amount)
+            + " WHERE id = "
+            + String(from_id)
         )
         db.execute(
             "UPDATE accounts SET balance = balance + "
-            + String(amount) + " WHERE id = " + String(to_id)
+            + String(amount)
+            + " WHERE id = "
+            + String(to_id)
         )
-        tx.commit()             # COMMIT — both rows updated atomically
+        tx.commit()  # COMMIT — both rows updated atomically
     except e:
-        tx.rollback()           # ROLLBACK — neither row changed
+        tx.rollback()  # ROLLBACK — neither row changed
         raise e.copy()
 
 
@@ -183,7 +202,9 @@ def main() raises:
     # ------------------------------------------------------------------
     # 2. Context-manager pattern — auto-rollback on exception
     # ------------------------------------------------------------------
-    print("\n--- Pattern 2: with db.transaction() --- auto-rollback on raise ---")
+    print(
+        "\n--- Pattern 2: with db.transaction() --- auto-rollback on raise ---"
+    )
     try:
         transfer(db, from_id=1, to_id=2, amount=1000)  # overdraft → raises
     except e:
@@ -201,7 +222,7 @@ def main() raises:
     print("\n--- Pattern 3: var tx --- explicit rollback without raising ---")
     var tx3 = db.transaction()
     db.execute("UPDATE accounts SET balance = 999 WHERE id = 1")
-    tx3.rollback()          # abort without raising; no rows change
+    tx3.rollback()  # abort without raising; no rows change
     print("  Alice after explicit rollback: " + String(get_balance(db, 1)))
 
     # ------------------------------------------------------------------
@@ -220,7 +241,7 @@ def main() raises:
     print("\n--- Pattern 5: _ = tx^ --- immediate destruction → ROLLBACK ---")
     var tx2 = db.transaction()
     db.execute("UPDATE accounts SET balance = 0 WHERE id = 1")  # zeroes Alice
-    _ = tx2^                            # consume guard → immediate ROLLBACK
+    _ = tx2^  # consume guard → immediate ROLLBACK
     print("  Alice after _ = tx^ cancellation: " + String(get_balance(db, 1)))
 
     # ------------------------------------------------------------------
@@ -230,9 +251,11 @@ def main() raises:
     show_balances(db)
 
     var alice = get_balance(db, 1)
-    var bob   = get_balance(db, 2)
+    var bob = get_balance(db, 2)
     assert alice == 900, "Alice should have 900 (800 + 100 back from Bob)"
-    assert bob   == 600, "Bob should have 600 (700 - 100 to Alice)"
+    assert bob == 600, "Bob should have 600 (700 - 100 to Alice)"
     assert alice + bob == 1500, "Total must be conserved"
-    print("\nAll assertions passed — total balance conserved: "
-          + String(alice + bob))
+    print(
+        "\nAll assertions passed — total balance conserved: "
+        + String(alice + bob)
+    )

@@ -13,7 +13,8 @@ Type mapping:
     Float64/Float32│ REAL
     Bool           │ INTEGER (0/1)
 
-Structs must satisfy ``Defaultable & Movable & Copyable``:
+Structs must satisfy ``Defaultable & Copyable`` (``Copyable`` implies
+``Movable``):
 
 - ``Defaultable`` — ``T()`` is called for each result row.
 - ``Movable``     — rows are moved into ``List[T]``.
@@ -33,7 +34,7 @@ from sqlite.orm import create_table, insert, query
 
 
 @fieldwise_init
-struct Book(Defaultable, Movable, Copyable):
+struct Book(Copyable, Defaultable):
     """A book in a library catalogue.
 
     Fields:
@@ -44,26 +45,26 @@ struct Book(Defaultable, Movable, Copyable):
         in_stock: Whether at least one copy is on the shelf.
     """
 
-    var title:    String
-    var author:   String
-    var year:     Int
-    var rating:   Float64
+    var title: String
+    var author: String
+    var year: Int
+    var rating: Float64
     var in_stock: Bool
 
     def __init__(out self):
         """Default-construct an empty Book."""
-        self.title    = ""
-        self.author   = ""
-        self.year     = 0
-        self.rating   = 0.0
+        self.title = ""
+        self.author = ""
+        self.year = 0
+        self.rating = 0.0
         self.in_stock = False
 
     def __init__(out self, *, copy: Self):
         """Copy constructor required by ``Copyable``."""
-        self.title    = copy.title
-        self.author   = copy.author
-        self.year     = copy.year
-        self.rating   = copy.rating
+        self.title = copy.title
+        self.author = copy.author
+        self.year = copy.year
+        self.rating = copy.rating
         self.in_stock = copy.in_stock
 
 
@@ -82,7 +83,8 @@ def main() raises:
 
     # Insert rows — each field is bound in declaration order.
     insert[Book](
-        db, "books",
+        db,
+        "books",
         Book(
             title="The Pragmatic Programmer",
             author="Hunt & Thomas",
@@ -92,7 +94,8 @@ def main() raises:
         ),
     )
     insert[Book](
-        db, "books",
+        db,
+        "books",
         Book(
             title="Clean Code",
             author="Robert C. Martin",
@@ -102,7 +105,8 @@ def main() raises:
         ),
     )
     insert[Book](
-        db, "books",
+        db,
+        "books",
         Book(
             title="Structure and Interpretation of Computer Programs",
             author="Abelson & Sussman",
