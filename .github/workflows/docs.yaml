@@ -24,14 +24,11 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Setup Pixi
-        uses: prefix-dev/setup-pixi@v0.9.4
+        uses: prefix-dev/setup-pixi@v0.11.2
         with:
           environments: dev
-          # Pin pixi: the default "latest" ships a build-api-version >=5
-          # that this repo's pixi-build-rattler-build 0.3.13 backend can't
-          # satisfy, failing the solve with "no candidates were found".
-          # 0.70.2 is the newest pixi compatible with that backend.
-          pixi-version: v0.70.2
+          # Pinned so CI is reproducible; bump together with the setup-pixi action.
+          pixi-version: v0.83.0
           cache: false
           post-cleanup: false
 

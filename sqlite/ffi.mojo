@@ -13,7 +13,7 @@ never needs to resolve SQLite symbols at compile time, eliminating the
 Do not call ``Sqlite3FFI`` methods from user code -- use ``db.mojo``.
 """
 
-from std.ffi import OwnedDLHandle, RTLD, CStringSpan
+from std.ffi import OwnedDLHandle, RTLD, CStringSpan, c_char
 from std.os import getenv
 from std.sys.info import CompilationTarget
 from std.memory import Pointer
@@ -58,7 +58,7 @@ def _ptr_to_string(addr: Int) -> String:
     """
     if addr == 0:
         return String("")
-    var p = Pointer[Int8, MutUntrackedOrigin](unsafe_from_address=addr)
+    var p = Pointer[c_char, MutUntrackedOrigin](unsafe_from_address=addr)
     return String(StringSlice(unsafe_from_utf8=CStringSpan(unsafe_from_ptr=p)))
 
 

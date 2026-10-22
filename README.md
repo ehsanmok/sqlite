@@ -134,7 +134,7 @@ channels = ["https://conda.modular.com/max", "conda-forge"]
 preview = ["pixi-build"]
 
 [dependencies]
-sqlite = { git = "https://github.com/ehsanmok/sqlite.git", tag = "v0.2.1" }
+sqlite = { git = "https://github.com/ehsanmok/sqlite.git", tag = "v0.2.2" }
 ```
 
 Then run:
