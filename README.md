@@ -17,7 +17,7 @@ transactions, and an ORM layer powered by compile-time reflection via
 - **ORM**: `create_table`, `insert`, `query` driven by compile-time struct
   reflection; no SQL to write for basic CRUD
 - **Rich type support**: `String`, `Int`, `Int64`, `Float64`, `Float32`,
-  `Bool`, `Optional[T]`
+  `Bool`, `List[UInt8]` (stored as `BLOB`), `Optional[T]`
 - **Thoroughly tested**: unit, edge-case, and property-based fuzz tests via
   [mozz](https://github.com/ehsanmok/mozz)
 

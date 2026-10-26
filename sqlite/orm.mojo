@@ -23,6 +23,8 @@ tables using the same compile-time reflection pattern as ``envo/loader.mojo``:
 +------------------+----------------+
 | Bool             | INTEGER (0/1)  |
 +------------------+----------------+
+| List[UInt8]      | BLOB           |
++------------------+----------------+
 
 Fields whose types are not in the table above are silently skipped.
 ``Optional[T]`` fields are stored as their inner type (or NULL when absent).
@@ -60,6 +62,10 @@ from morph.reflect import (
     OPT_BOOL_NAME,
 )
 from .db import Database, Row
+
+
+comptime LIST_UINT8_NAME = reflect[List[UInt8]].name()
+comptime OPT_LIST_UINT8_NAME = reflect[Optional[List[UInt8]]].name()
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +211,14 @@ def insert[T: Morphable](db: Database, table: String, value: T) raises:
                     stmt.bind_int(param_idx, 1 if opt.value() else 0)
                 else:
                     stmt.bind_null(param_idx)
+            elif type_name == LIST_UINT8_NAME:
+                stmt.bind_blob(param_idx, ptr.unsafe_bitcast[List[UInt8]]()[])
+            elif type_name == OPT_LIST_UINT8_NAME:
+                ref opt = ptr.unsafe_bitcast[Optional[List[UInt8]]]()[]
+                if opt:
+                    stmt.bind_blob(param_idx, opt.value())
+                else:
+                    stmt.bind_null(param_idx)
 
             param_idx += 1
 
@@ -282,6 +296,11 @@ def query[T: Morphable & Copyable](
                     elif type_name == OPT_BOOL_NAME:
                         ptr.unsafe_deinit_pointee()
                         ptr.unsafe_bitcast[Optional[Bool]]().unsafe_write(None)
+                    elif type_name == OPT_LIST_UINT8_NAME:
+                        ptr.unsafe_deinit_pointee()
+                        ptr.unsafe_bitcast[Optional[List[UInt8]]]().unsafe_write(
+                            None
+                        )
                 else:
                     comptime
                     if type_name == STRING_NAME:
@@ -334,6 +353,16 @@ def query[T: Morphable & Copyable](
                         ptr.unsafe_bitcast[Optional[Bool]]().unsafe_write(
                             row.int_val(col_idx) != 0
                         )
+                    elif type_name == LIST_UINT8_NAME:
+                        ptr.unsafe_deinit_pointee()
+                        ptr.unsafe_bitcast[List[UInt8]]().unsafe_write(
+                            row.blob_val(col_idx)
+                        )
+                    elif type_name == OPT_LIST_UINT8_NAME:
+                        ptr.unsafe_deinit_pointee()
+                        ptr.unsafe_bitcast[Optional[List[UInt8]]]().unsafe_write(
+                            row.blob_val(col_idx)
+                        )
 
                 col_idx += 1
 
@@ -355,7 +384,8 @@ def _sql_type_for[T: AnyType]() -> StaticString:
         T: The Mojo field type to classify.
 
     Returns:
-        ``"TEXT"``, ``"INTEGER"``, ``"REAL"``, or ``""`` (unsupported/skip).
+        ``"TEXT"``, ``"INTEGER"``, ``"REAL"``, ``"BLOB"``, or ``""``
+        (unsupported/skip).
     """
     comptime type_name = reflect[T].name()
 
@@ -376,5 +406,7 @@ def _sql_type_for[T: AnyType]() -> StaticString:
         or type_name == OPT_FLOAT64_NAME
     ):
         return "REAL"
+    elif type_name == LIST_UINT8_NAME or type_name == OPT_LIST_UINT8_NAME:
+        return "BLOB"
     else:
         return ""

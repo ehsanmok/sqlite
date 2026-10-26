@@ -163,6 +163,7 @@ struct Sqlite3FFI(Movable):
     var _fn_bind_double: def(Int, Int32, Float64) thin abi("C") -> Int32
     var _fn_bind_text: def(Int, Int32, Int, Int32, Int) thin abi("C") -> Int32
     var _fn_bind_null: def(Int, Int32) thin abi("C") -> Int32
+    var _fn_bind_blob: def(Int, Int32, Int, Int32, Int) thin abi("C") -> Int32
 
     # -- column reading (0-based index) --------------------------------------
     var _fn_col_count: def(Int) thin abi("C") -> Int32
@@ -170,6 +171,8 @@ struct Sqlite3FFI(Movable):
     var _fn_col_int64: def(Int, Int32) thin abi("C") -> Int
     var _fn_col_double: def(Int, Int32) thin abi("C") -> Float64
     var _fn_col_text: def(Int, Int32) thin abi("C") -> Int
+    var _fn_col_blob: def(Int, Int32) thin abi("C") -> Int
+    var _fn_col_bytes: def(Int, Int32) thin abi("C") -> Int32
 
     def __init__(out self, lib_path: String = "") raises:
         """Load ``libsqlite3`` and resolve all function pointers.
@@ -227,6 +230,9 @@ struct Sqlite3FFI(Movable):
         self._fn_bind_null = _dl_sym[def(Int, Int32) thin abi("C") -> Int32](
             self._lib, "sqlite3_bind_null"
         )
+        self._fn_bind_blob = _dl_sym[
+            def(Int, Int32, Int, Int32, Int) thin abi("C") -> Int32
+        ](self._lib, "sqlite3_bind_blob")
         self._fn_col_count = _dl_sym[def(Int) thin abi("C") -> Int32](
             self._lib, "sqlite3_column_count"
         )
@@ -241,6 +247,12 @@ struct Sqlite3FFI(Movable):
         )
         self._fn_col_text = _dl_sym[def(Int, Int32) thin abi("C") -> Int](
             self._lib, "sqlite3_column_text"
+        )
+        self._fn_col_blob = _dl_sym[def(Int, Int32) thin abi("C") -> Int](
+            self._lib, "sqlite3_column_blob"
+        )
+        self._fn_col_bytes = _dl_sym[def(Int, Int32) thin abi("C") -> Int32](
+            self._lib, "sqlite3_column_bytes"
         )
 
     # -- connection ----------------------------------------------------------
@@ -487,6 +499,26 @@ struct Sqlite3FFI(Movable):
         _ = v^  # keep v alive past the FFI call
         _check(rc, "sqlite3_bind_text (idx=" + String(idx) + ") failed")
 
+    def bind_blob(self, stmt: Int, idx: Int, val: List[UInt8]) raises:
+        """Bind a BLOB value to a statement parameter (SQLITE_TRANSIENT copy).
+
+        Args:
+            stmt: sqlite3_stmt handle.
+            idx:  Parameter index (1-based).
+            val:  Byte buffer (copied by SQLite).
+
+        Raises:
+            Error: On binding failure.
+        """
+        var v = val.copy()
+        var v_len = Int32(len(v))
+        # SQLITE_TRANSIENT = -1: SQLite copies the bytes immediately.
+        var rc = self._fn_bind_blob(
+            stmt, Int32(idx), Int(v.unsafe_ptr()), v_len, Int(-1)
+        )
+        _ = v^  # keep v alive past the FFI call
+        _check(rc, "sqlite3_bind_blob (idx=" + String(idx) + ") failed")
+
     def bind_null(self, stmt: Int, idx: Int):
         """Bind SQL NULL to a statement parameter.
 
@@ -558,3 +590,25 @@ struct Sqlite3FFI(Movable):
             string for SQL NULL.
         """
         return _ptr_to_string(self._fn_col_text(stmt, Int32(col)))
+
+    def column_blob(self, stmt: Int, col: Int) -> List[UInt8]:
+        """Read a BLOB column value (0-based index).
+
+        Args:
+            stmt: sqlite3_stmt handle.
+            col:  Column index (0-based).
+
+        Returns:
+            An owned copy of the column bytes, or an empty list for a
+            zero-length BLOB or SQL NULL.
+        """
+        # sqlite3_column_blob must be called before sqlite3_column_bytes.
+        var addr = self._fn_col_blob(stmt, Int32(col))
+        var n = Int(self._fn_col_bytes(stmt, Int32(col)))
+        var out = List[UInt8](capacity=n)
+        if addr == 0 or n == 0:
+            return out^
+        var p = Pointer[UInt8, MutUntrackedOrigin](unsafe_from_address=addr)
+        for i in range(n):
+            out.append(p[unsafe_offset=i])
+        return out^

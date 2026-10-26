@@ -45,6 +45,7 @@ from .ffi import (
     SQLITE_INTEGER,
     SQLITE_FLOAT,
     SQLITE_TEXT,
+    SQLITE_BLOB,
     SQLITE_NULL,
 )
 
@@ -223,6 +224,7 @@ struct Row(Movable):
     var _ints: List[Int]
     var _floats: List[Float64]
     var _texts: List[String]
+    var _blobs: List[List[UInt8]]
 
     def __init__(
         out self,
@@ -231,6 +233,7 @@ struct Row(Movable):
         ints: List[Int],
         floats: List[Float64],
         texts: List[String],
+        blobs: List[List[UInt8]],
     ):
         """Construct a ``Row`` from pre-read column snapshots.
 
@@ -240,12 +243,14 @@ struct Row(Movable):
             ints:   Per-column integer values (0 for non-integer columns).
             floats: Per-column float values (0.0 for non-float columns).
             texts:  Per-column text values (empty for non-text columns).
+            blobs:  Per-column BLOB values (empty for non-BLOB columns).
         """
         self._ncols = ncols
         self._types = types.copy()
         self._ints = ints.copy()
         self._floats = floats.copy()
         self._texts = texts.copy()
+        self._blobs = blobs.copy()
 
     def num_cols(self) -> Int:
         """Return the number of columns in this row.
@@ -287,6 +292,17 @@ struct Row(Movable):
             String value (empty string if the column is not ``SQLITE_TEXT``).
         """
         return self._texts[col]
+
+    def blob_val(self, col: Int) -> List[UInt8]:
+        """Return the BLOB value of column ``col``.
+
+        Args:
+            col: 0-based column index.
+
+        Returns:
+            A copy of the bytes (empty if the column is not ``SQLITE_BLOB``).
+        """
+        return self._blobs[col].copy()
 
     def is_null(self, col: Int) -> Bool:
         """Check whether column ``col`` contains SQL NULL.
@@ -382,6 +398,18 @@ struct Statement(Movable):
         """
         self._ffi.bind_text(self._handle, idx, val)
 
+    def bind_blob(self, idx: Int, val: List[UInt8]) raises:
+        """Bind a BLOB value to parameter ``idx``.
+
+        Args:
+            idx: 1-based parameter index.
+            val: Byte buffer (copied by SQLite).
+
+        Raises:
+            Error: On binding failure.
+        """
+        self._ffi.bind_blob(self._handle, idx, val)
+
     def bind_null(self, idx: Int):
         """Bind SQL NULL to parameter ``idx``.
 
@@ -412,6 +440,7 @@ struct Statement(Movable):
             var ints = List[Int]()
             var floats = List[Float64]()
             var texts = List[String]()
+            var blobs = List[List[UInt8]]()
             for col in range(ncols):
                 var t = self._ffi.column_type(self._handle, col)
                 types.append(t)
@@ -431,7 +460,11 @@ struct Statement(Movable):
                     ints.append(0)
                     floats.append(Float64(0))
                     texts.append(String(""))
-            return Row(ncols, types, ints, floats, texts)
+                if t == SQLITE_BLOB:
+                    blobs.append(self._ffi.column_blob(self._handle, col))
+                else:
+                    blobs.append(List[UInt8]())
+            return Row(ncols, types, ints, floats, texts, blobs)
         if Int(rc) == 101:  # SQLITE_DONE
             return None
         raise Error(

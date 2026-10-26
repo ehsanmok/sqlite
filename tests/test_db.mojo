@@ -5,7 +5,8 @@ Tests use an in-memory database (``:memory:``) for isolation and speed.
 Coverage:
 - Open / close lifecycle
 - DDL execution (CREATE TABLE, multiple statements)
-- All bind variants: int, float, text, null
+- All bind variants: int, float, text, blob, null
+- BLOB edge cases: embedded 0x00 / 0xFF bytes, empty blob
 - Text edge cases: empty, unicode, embedded quotes, newline, large
 - Integer edge cases: zero, negative, boundary values
 - Float edge cases: zero, negative, large
@@ -282,6 +283,45 @@ def test_bind_float_large() raises:
     var q = db.prepare("SELECT val FROM t")
     ref row = q.step().value()
     assert_true(row.float_val(0) > 1e307, "Large float lost precision")
+
+
+# -----------------------------------------------------------------------
+# Bind: blob
+# -----------------------------------------------------------------------
+
+
+def test_bind_blob() raises:
+    """Binding a BLOB with every byte value round-trips correctly."""
+    var db = Database(":memory:")
+    db.execute("CREATE TABLE t (val BLOB)")
+    var data = List[UInt8]()
+    for i in range(256):
+        data.append(UInt8(i))
+    var stmt = db.prepare("INSERT INTO t VALUES (?)")
+    stmt.bind_blob(1, data)
+    _ = stmt.step()
+
+    var q = db.prepare("SELECT val FROM t")
+    ref row = q.step().value()
+    assert_false(row.is_null(0))
+    var got = row.blob_val(0)
+    assert_equal(len(got), 256)
+    for i in range(256):
+        assert_equal(Int(got[i]), i)
+
+
+def test_bind_blob_empty() raises:
+    """Binding an empty BLOB round-trips as an empty, non-NULL value."""
+    var db = Database(":memory:")
+    db.execute("CREATE TABLE t (val BLOB)")
+    var stmt = db.prepare("INSERT INTO t VALUES (?)")
+    stmt.bind_blob(1, List[UInt8]())
+    _ = stmt.step()
+
+    var q = db.prepare("SELECT val FROM t")
+    ref row = q.step().value()
+    assert_false(row.is_null(0))
+    assert_equal(len(row.blob_val(0)), 0)
 
 
 # -----------------------------------------------------------------------
@@ -1007,6 +1047,10 @@ def main() raises:
     print("test_bind_text_single_quote          PASSED")
     test_bind_text_newline()
     print("test_bind_text_newline               PASSED")
+    test_bind_blob()
+    print("test_bind_blob                       PASSED")
+    test_bind_blob_empty()
+    print("test_bind_blob_empty                 PASSED")
     test_bind_text_large()
     print("test_bind_text_large                 PASSED")
 

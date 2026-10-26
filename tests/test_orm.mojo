@@ -10,6 +10,7 @@ Coverage:
 - Float edge cases: 0.0, negative, large; Float32 field
 - Bool: True and False round-trips
 - Optional fields: None (NULL) and Some for Int, String, Float64, Bool
+- ``List[UInt8]`` BLOB fields (issue #1), including ``Optional[List[UInt8]]``
 - WHERE clause filtering and ORDER BY
 - Bulk insert / count invariant (50 rows)
 """
@@ -98,6 +99,44 @@ struct Sensor(Defaultable, Copyable):
     def __init__(out self, *, copy: Self):
         self.name = copy.name
         self.reading = copy.reading
+
+
+@fieldwise_init
+struct Block(Defaultable, Copyable):
+    """Struct with ``List[UInt8]`` BLOB fields (regression for issue #1)."""
+
+    var is_transfer: Bool
+    var token: List[UInt8]
+    var prev_block_hash: List[UInt8]
+    var nonce: List[UInt8]
+
+    def __init__(out self):
+        self.is_transfer = False
+        self.token = List[UInt8]()
+        self.prev_block_hash = List[UInt8]()
+        self.nonce = List[UInt8]()
+
+    def __init__(out self, *, copy: Self):
+        self.is_transfer = copy.is_transfer
+        self.token = copy.token.copy()
+        self.prev_block_hash = copy.prev_block_hash.copy()
+        self.nonce = copy.nonce.copy()
+
+
+@fieldwise_init
+struct Attachment(Defaultable, Copyable):
+    """Struct with an ``Optional[List[UInt8]]`` BLOB field."""
+
+    var name: String
+    var data: Optional[List[UInt8]]
+
+    def __init__(out self):
+        self.name = ""
+        self.data = None
+
+    def __init__(out self, *, copy: Self):
+        self.name = copy.name
+        self.data = copy.data.copy()
 
 
 # ---------------------------------------------------------------------------
@@ -520,6 +559,83 @@ def test_all_optionals_some() raises:
 
 
 # ---------------------------------------------------------------------------
+# BLOB (List[UInt8]) fields
+# ---------------------------------------------------------------------------
+
+
+def test_blob_fields_roundtrip() raises:
+    """List[UInt8] fields are stored as BLOBs and read back byte-for-byte."""
+    var db = Database(":memory:")
+    create_table[Block](db, "block_chain")
+
+    var token = List[UInt8]()
+    var prev = List[UInt8]()
+    for i in range(32):
+        token.append(UInt8(i))
+        prev.append(UInt8(255 - i))
+    var nonce = List[UInt8]()
+    for i in range(8):
+        nonce.append(UInt8(i + 1))
+
+    insert[Block](
+        db,
+        "block_chain",
+        Block(
+            is_transfer=True,
+            token=token.copy(),
+            prev_block_hash=prev.copy(),
+            nonce=nonce.copy(),
+        ),
+    )
+
+    var rows = query[Block](db, "block_chain", "1=1")
+    assert_equal(len(rows), 1)
+    assert_true(rows[0].is_transfer)
+    assert_equal(len(rows[0].token), 32)
+    assert_equal(len(rows[0].prev_block_hash), 32)
+    assert_equal(len(rows[0].nonce), 8)
+    assert_true(rows[0].token == token)
+    assert_true(rows[0].prev_block_hash == prev)
+    assert_true(rows[0].nonce == nonce)
+
+
+def test_blob_field_empty() raises:
+    """An empty List[UInt8] field round-trips as an empty list."""
+    var db = Database(":memory:")
+    create_table[Block](db, "blocks")
+    insert[Block](db, "blocks", Block())
+    var rows = query[Block](db, "blocks")
+    assert_equal(len(rows), 1)
+    assert_equal(len(rows[0].token), 0)
+    assert_equal(len(rows[0].nonce), 0)
+
+
+def test_optional_blob_none() raises:
+    """Optional[List[UInt8]] None is stored as NULL and read back as None."""
+    var db = Database(":memory:")
+    create_table[Attachment](db, "att")
+    insert[Attachment](db, "att", Attachment(name="empty", data=None))
+    var rows = query[Attachment](db, "att")
+    assert_equal(len(rows), 1)
+    assert_false(Bool(rows[0].data))
+
+
+def test_optional_blob_some() raises:
+    """Optional[List[UInt8]] Some round-trips its bytes."""
+    var db = Database(":memory:")
+    create_table[Attachment](db, "att")
+    var bytes = List[UInt8]()
+    bytes.append(0x00)
+    bytes.append(0xFF)
+    bytes.append(0x7F)
+    insert[Attachment](db, "att", Attachment(name="bin", data=bytes.copy()))
+    var rows = query[Attachment](db, "att")
+    assert_equal(len(rows), 1)
+    assert_true(Bool(rows[0].data))
+    assert_true(rows[0].data.value() == bytes)
+
+
+# ---------------------------------------------------------------------------
 # WHERE clause and ordering
 # ---------------------------------------------------------------------------
 
@@ -696,6 +812,16 @@ def main() raises:
     print("test_all_optionals_none              PASSED")
     test_all_optionals_some()
     print("test_all_optionals_some              PASSED")
+
+    # BLOB
+    test_blob_fields_roundtrip()
+    print("test_blob_fields_roundtrip           PASSED")
+    test_blob_field_empty()
+    print("test_blob_field_empty                PASSED")
+    test_optional_blob_none()
+    print("test_optional_blob_none              PASSED")
+    test_optional_blob_some()
+    print("test_optional_blob_some              PASSED")
 
     # WHERE and ordering
     test_query_where_clause()
