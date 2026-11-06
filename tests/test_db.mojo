@@ -25,10 +25,16 @@ Coverage:
 - ``Transaction`` context manager: auto-rollback when ``with`` block raises
 - ``Transaction`` context manager: ``as tx`` pattern with explicit rollback
 - Column count via ``num_cols``
+- Shared FFI: many ``prepare()`` / ``transaction()`` cycles from one Database
+- ``step_row()`` and ``column_*`` accessors match ``step()`` / ``Row``
+- ``open_v2`` flags (read-only, no-create), ``busy_timeout``, ``clear_bindings``
 """
 
 from std.testing import assert_equal, assert_true, assert_false
+from std.tempfile import mkdtemp
+from std.time import perf_counter_ns
 from sqlite.db import Database, Row, Transaction
+from sqlite.ffi import SQLITE_OPEN_READONLY, SQLITE_OPEN_READWRITE
 from sqlite.orm import create_table, insert, query as orm_query
 
 
@@ -1042,6 +1048,93 @@ def test_step_row_matches_step() raises:
 
 
 # -----------------------------------------------------------------------
+# open_v2 flags, busy_timeout, clear_bindings
+# -----------------------------------------------------------------------
+
+
+def _temp_db_path(name: String) raises -> String:
+    return String(mkdtemp(prefix="sqlite_mojo_")) + "/" + name + ".db"
+
+
+def test_open_readonly_rejects_writes() raises:
+    """A SQLITE_OPEN_READONLY handle reads but cannot write."""
+    var path = _temp_db_path("ro")
+    var w = Database(path)
+    w.execute("CREATE TABLE t (v INTEGER)")
+    w.execute("INSERT INTO t VALUES (7)")
+
+    var r = Database(path, flags=SQLITE_OPEN_READONLY)
+    var q = r.prepare("SELECT v FROM t")
+    assert_true(q.step_row())
+    assert_equal(q.column_int(0), 7)
+    var failed = False
+    try:
+        r.execute("INSERT INTO t VALUES (8)")
+    except:
+        failed = True
+    assert_true(failed)
+
+
+def test_open_missing_file_without_create_raises() raises:
+    """Without SQLITE_OPEN_CREATE a missing file is an error, with a message."""
+    var msg = String("")
+    try:
+        _ = Database(
+            _temp_db_path("missing"), flags=SQLITE_OPEN_READWRITE
+        )
+    except e:
+        msg = String(e)
+    assert_true("sqlite3_open_v2" in msg)
+    assert_true("unable to open" in msg)
+
+
+def test_busy_timeout_waits_for_lock() raises:
+    """A locked database fails at once without busy_timeout, and waits with it."""
+    var path = _temp_db_path("busy")
+    var a = Database(path)
+    a.execute("CREATE TABLE t (v INTEGER)")
+    a.execute("BEGIN IMMEDIATE")
+
+    var rw = SQLITE_OPEN_READWRITE
+    var b = Database(path, flags=rw)
+    var t0 = perf_counter_ns()
+    var failed = False
+    try:
+        b.execute("BEGIN IMMEDIATE")
+    except:
+        failed = True
+    assert_true(failed)
+    assert_true(perf_counter_ns() - t0 < 100_000_000)
+
+    var c = Database(path, flags=rw, busy_timeout_ms=200)
+    t0 = perf_counter_ns()
+    failed = False
+    try:
+        c.execute("BEGIN IMMEDIATE")
+    except:
+        failed = True
+    assert_true(failed)
+    assert_true(perf_counter_ns() - t0 >= 150_000_000)
+    a.execute("ROLLBACK")
+
+
+def test_clear_bindings() raises:
+    """``reset()`` keeps bound values; ``clear_bindings()`` nulls them."""
+    var db = Database(":memory:")
+    var q = db.prepare("SELECT ?")
+    q.bind_int(1, 5)
+    assert_true(q.step_row())
+    assert_equal(q.column_int(0), 5)
+    q.reset()
+    assert_true(q.step_row())
+    assert_equal(q.column_int(0), 5)
+    q.reset()
+    q.clear_bindings()
+    assert_true(q.step_row())
+    assert_true(q.column_is_null(0))
+
+
+# -----------------------------------------------------------------------
 # Main
 # -----------------------------------------------------------------------
 
@@ -1200,5 +1293,15 @@ def main() raises:
     # step_row and column accessors
     test_step_row_matches_step()
     print("test_step_row_matches_step               PASSED")
+
+    # open_v2 flags, busy_timeout, clear_bindings
+    test_open_readonly_rejects_writes()
+    print("test_open_readonly_rejects_writes        PASSED")
+    test_open_missing_file_without_create_raises()
+    print("test_open_missing_file_without_create_raises PASSED")
+    test_busy_timeout_waits_for_lock()
+    print("test_busy_timeout_waits_for_lock         PASSED")
+    test_clear_bindings()
+    print("test_clear_bindings                      PASSED")
 
     print("\nAll db tests passed.")

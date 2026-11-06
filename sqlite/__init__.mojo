@@ -99,4 +99,12 @@ while True:
 """
 
 from .db import Database, Statement, Row, Transaction
+from .ffi import (
+    SQLITE_OPEN_READONLY,
+    SQLITE_OPEN_READWRITE,
+    SQLITE_OPEN_CREATE,
+    SQLITE_OPEN_URI,
+    SQLITE_OPEN_NOMUTEX,
+    SQLITE_OPEN_FULLMUTEX,
+)
 from .orm import create_table, insert, query

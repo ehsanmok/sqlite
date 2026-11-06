@@ -28,6 +28,17 @@ comptime SQLITE_ROW = 100
 comptime SQLITE_DONE = 101
 
 # -----------------------------------------------------------------------
+# sqlite3_open_v2 flags
+# -----------------------------------------------------------------------
+
+comptime SQLITE_OPEN_READONLY = 0x00000001
+comptime SQLITE_OPEN_READWRITE = 0x00000002
+comptime SQLITE_OPEN_CREATE = 0x00000004
+comptime SQLITE_OPEN_URI = 0x00000040
+comptime SQLITE_OPEN_NOMUTEX = 0x00008000
+comptime SQLITE_OPEN_FULLMUTEX = 0x00010000
+
+# -----------------------------------------------------------------------
 # Column type codes
 # -----------------------------------------------------------------------
 
@@ -145,7 +156,8 @@ struct Sqlite3FFI(Copyable):
     """
 
     # -- connection functions ------------------------------------------------
-    var _fn_open: def(Int, Int) thin abi("C") -> Int32
+    var _fn_open: def(Int, Int, Int32, Int) thin abi("C") -> Int32
+    var _fn_busy_timeout: def(Int, Int32) thin abi("C") -> Int32
     var _fn_close: def(Int) thin abi("C") -> Int32
     var _fn_errmsg: def(Int) thin abi("C") -> Int
     var _fn_exec: def(Int, Int, Int, Int, Int) thin abi("C") -> Int32
@@ -154,6 +166,7 @@ struct Sqlite3FFI(Copyable):
     var _fn_prepare: def(Int, Int, Int32, Int, Int) thin abi("C") -> Int32
     var _fn_step: def(Int) thin abi("C") -> Int32
     var _fn_reset: def(Int) thin abi("C") -> Int32
+    var _fn_clear_bindings: def(Int) thin abi("C") -> Int32
     var _fn_finalize: def(Int) thin abi("C") -> Int32
 
     # -- parameter binding (1-based index) -----------------------------------
@@ -192,8 +205,14 @@ struct Sqlite3FFI(Copyable):
         # The library stays resident until process exit regardless.
         var lib = OwnedDLHandle(path, RTLD.NOW | RTLD.GLOBAL | RTLD.NODELETE)
 
-        self._fn_open = _dl_sym[def(Int, Int) thin abi("C") -> Int32](
-            lib, "sqlite3_open"
+        self._fn_open = _dl_sym[
+            def(Int, Int, Int32, Int) thin abi("C") -> Int32
+        ](lib, "sqlite3_open_v2")
+        self._fn_busy_timeout = _dl_sym[def(Int, Int32) thin abi("C") -> Int32](
+            lib, "sqlite3_busy_timeout"
+        )
+        self._fn_clear_bindings = _dl_sym[def(Int) thin abi("C") -> Int32](
+            lib, "sqlite3_clear_bindings"
         )
         self._fn_close = _dl_sym[def(Int) thin abi("C") -> Int32](
             lib, "sqlite3_close"
@@ -255,8 +274,13 @@ struct Sqlite3FFI(Copyable):
 
     # -- connection ----------------------------------------------------------
 
-    def open(self, filename: String) raises -> Int:
-        """Open or create a SQLite database file.
+    def open(
+        self,
+        filename: String,
+        flags: Int = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+        busy_timeout_ms: Int = 0,
+    ) raises -> Int:
+        """Open a SQLite database file with ``sqlite3_open_v2``.
 
         Uses a ``List[Int]`` as the output buffer for the ``sqlite3**``
         argument (same pattern as simdjson FFI for output pointer args).
@@ -268,12 +292,16 @@ struct Sqlite3FFI(Copyable):
 
         Args:
             filename: File path or ``:memory:`` for an in-memory database.
+            flags: ``SQLITE_OPEN_*`` flags; the default opens read-write and
+                creates the file, like plain ``sqlite3_open``.
+            busy_timeout_ms: How long a locked database is retried before
+                ``SQLITE_BUSY``; 0 fails immediately.
 
         Returns:
             sqlite3 connection handle as ``Int``.
 
         Raises:
-            Error: If ``sqlite3_open`` returns a non-zero code.
+            Error: If ``sqlite3_open_v2`` returns a non-zero code.
         """
         var n = filename.byte_length()
         var src = filename.unsafe_ptr()
@@ -286,16 +314,25 @@ struct Sqlite3FFI(Copyable):
         var rc = self._fn_open(
             Int(buf.unsafe_ptr()),
             Int(db_out.unsafe_ptr()),
+            Int32(flags),
+            0,
         )
         _ = buf^  # keep buf alive past the FFI call
         if Int(rc) != SQLITE_OK:
+            # A handle is returned even on failure; it holds the message
+            # and must be closed.
+            var msg = self.errmsg(db_out[0])
+            _ = self._fn_close(db_out[0])
             raise Error(
-                "sqlite3_open('"
+                "sqlite3_open_v2('"
                 + filename
                 + "') failed (sqlite3 rc="
                 + String(Int(rc))
-                + ")"
+                + "): "
+                + msg
             )
+        if busy_timeout_ms > 0:
+            _ = self._fn_busy_timeout(db_out[0], Int32(busy_timeout_ms))
         return db_out[0]
 
     def close(self, db: Int) abi("C") -> Int32:
@@ -432,6 +469,17 @@ struct Sqlite3FFI(Copyable):
             SQLite result code.
         """
         return self._fn_reset(stmt)
+
+    def clear_bindings(self, stmt: Int) abi("C") -> Int32:
+        """Reset every bound parameter of a statement to NULL.
+
+        Args:
+            stmt: sqlite3_stmt handle.
+
+        Returns:
+            SQLite result code.
+        """
+        return self._fn_clear_bindings(stmt)
 
     def finalize(self, stmt: Int):
         """Destroy a prepared statement and free its resources.

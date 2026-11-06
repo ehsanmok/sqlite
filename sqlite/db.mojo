@@ -356,6 +356,19 @@ struct Statement(Movable):
         """Finalize the statement and release its resources."""
         self._ffi.finalize(self._handle)
 
+    def clear_bindings(self) raises:
+        """Set every bound parameter back to NULL.
+
+        ``reset()`` keeps bindings, so call this when a reused statement
+        must not see the previous values.
+
+        Raises:
+            Error: If the call fails.
+        """
+        var rc = self._ffi.clear_bindings(self._handle)
+        if rc != 0:
+            raise Error("sqlite3_clear_bindings failed (rc=" + String(Int(rc)) + ")")
+
     def reset(self) raises:
         """Reset the statement so it can be re-executed.
 
@@ -563,6 +576,28 @@ struct Database(Movable):
     def __deinit__(deinit self):
         """Close the database connection."""
         _ = self._ffi.close(self._handle)
+
+    def __init__(
+        out self, path: String, *, flags: Int, busy_timeout_ms: Int = 0
+    ) raises:
+        """Open a database with explicit ``SQLITE_OPEN_*`` flags.
+
+        Use ``SQLITE_OPEN_READONLY`` for read-only handles, and
+        ``SQLITE_OPEN_NOMUTEX`` only when each connection is used by a
+        single thread.
+
+        Args:
+            path: File-system path to the database, or ``:memory:``.
+            flags: ``SQLITE_OPEN_*`` flags, for example
+                ``SQLITE_OPEN_READWRITE | SQLITE_OPEN_NOMUTEX``.
+            busy_timeout_ms: How long a locked database is retried before
+                ``SQLITE_BUSY`` is returned; 0 fails immediately.
+
+        Raises:
+            Error: If ``sqlite3_open_v2`` fails.
+        """
+        self._ffi = Sqlite3FFI()
+        self._handle = self._ffi.open(path, flags, busy_timeout_ms)
 
     def execute(self, sql: String) raises:
         """Execute one or more SQL statements with no result rows.

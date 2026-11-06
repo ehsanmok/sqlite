@@ -124,6 +124,37 @@ def main() raises:
         # 42  hello
 ```
 
+### Server use
+
+`step_row()` reads the current row in place, with no `Row` copy:
+
+```mojo
+var q = db.prepare("SELECT id, label FROM t")
+while q.step_row():
+    print(q.column_int(0), q.column_text(1))
+```
+
+Open with explicit flags and a busy timeout for file databases shared by
+several connections (use one `Database` per thread or worker):
+
+```mojo
+from sqlite import (
+    Database,
+    SQLITE_OPEN_READWRITE,
+    SQLITE_OPEN_CREATE,
+    SQLITE_OPEN_NOMUTEX,
+)
+
+var db = Database(
+    "app.db",
+    flags=SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX,
+    busy_timeout_ms=5000,
+)
+db.execute("PRAGMA journal_mode=WAL")
+```
+
+`reset()` keeps bound parameters; call `clear_bindings()` to null them.
+
 ## Installation
 
 Add sqlite to your project's `pixi.toml`:
