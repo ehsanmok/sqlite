@@ -103,16 +103,19 @@ struct Transaction(Movable):
     var _handle: Int  # sqlite3 connection handle (non-owning borrow)
     var _done: Bool  # True after commit() or rollback(); silences __deinit__
 
-    def __init__(out self, handle: Int) raises:
+    def __init__(
+        out self, handle: Int, ffi: Sqlite3FFI
+    ) raises:
         """Begin a new transaction on ``handle``.
 
         Args:
             handle: Open ``sqlite3*`` connection handle.
+            ffi: Loaded SQLite entry points (``Database`` passes its own).
 
         Raises:
             Error: If ``BEGIN`` fails (e.g. a transaction is already active).
         """
-        self._ffi = Sqlite3FFI()
+        self._ffi = ffi.copy()
         self._handle = handle
         self._done = False
         self._ffi.exec(handle, "BEGIN")
@@ -332,17 +335,20 @@ struct Statement(Movable):
     var _db: Int
     var _handle: Int
 
-    def __init__(out self, db: Int, sql: String) raises:
+    def __init__(
+        out self, db: Int, sql: String, ffi: Sqlite3FFI
+    ) raises:
         """Compile a SQL statement.
 
         Args:
             db:  sqlite3 handle of the owning connection.
             sql: A single SQL statement (no trailing semicolon needed).
+            ffi: Loaded SQLite entry points (``Database`` passes its own).
 
         Raises:
             Error: If the SQL fails to compile.
         """
-        self._ffi = Sqlite3FFI()
+        self._ffi = ffi.copy()
         self._db = db
         self._handle = self._ffi.prepare_v2(db, sql)
 
@@ -538,7 +544,7 @@ struct Database(Movable):
         Raises:
             Error: If the SQL fails to compile.
         """
-        return Statement(self._handle, sql)
+        return Statement(self._handle, sql, self._ffi)
 
     def transaction(self) raises -> Transaction:
         """Begin a new transaction and return an RAII guard.
@@ -561,7 +567,7 @@ struct Database(Movable):
             db.execute("INSERT INTO line_items VALUES (1, 42, 3)")
             tx.commit()   # both rows committed atomically
         """
-        return Transaction(self._handle)
+        return Transaction(self._handle, self._ffi)
 
     def last_error(self) -> String:
         """Return the most recent error message for this connection.

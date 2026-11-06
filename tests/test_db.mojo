@@ -987,6 +987,27 @@ def test_last_error_after_open() raises:
 
 
 # -----------------------------------------------------------------------
+# Shared FFI
+# -----------------------------------------------------------------------
+
+
+def test_many_prepare_and_transaction_cycles() raises:
+    """Statements and transactions created from one Database share its FFI."""
+    var db = Database(":memory:")
+    db.execute("CREATE TABLE t (v INTEGER)")
+    for i in range(200):
+        var tx = db.transaction()
+        var ins = db.prepare("INSERT INTO t VALUES (?)")
+        ins.bind_int(1, i)
+        _ = ins.step()
+        tx.commit()
+    var q = db.prepare("SELECT COUNT(*), SUM(v) FROM t")
+    ref r = q.step().value()
+    assert_equal(r.int_val(0), 200)
+    assert_equal(r.int_val(1), 19900)
+
+
+# -----------------------------------------------------------------------
 # Main
 # -----------------------------------------------------------------------
 
@@ -1137,5 +1158,9 @@ def main() raises:
     # last_error
     test_last_error_after_open()
     print("test_last_error_after_open           PASSED")
+
+    # Shared FFI
+    test_many_prepare_and_transaction_cycles()
+    print("test_many_prepare_and_transaction_cycles PASSED")
 
     print("\nAll db tests passed.")

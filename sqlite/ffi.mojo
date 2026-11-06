@@ -120,7 +120,7 @@ def _check(rc: Int32, msg: String) raises:
 # -----------------------------------------------------------------------
 
 
-struct Sqlite3FFI(Movable):
+struct Sqlite3FFI(Copyable):
     """Runtime-loaded SQLite FFI: ``dlopen`` + ``dlsym`` for all C entry-points.
 
     Loads ``libsqlite3`` at construction via ``OwnedDLHandle`` and resolves
@@ -129,12 +129,12 @@ struct Sqlite3FFI(Movable):
     all supported platforms), matching the C ABI on x86-64 and arm64 without
     requiring ``Pointer`` type annotations.
 
-    Each ``Database``, ``Statement``, and ``Transaction`` owns one instance.
-    The OS reference-counts the underlying shared library, so multiple
-    concurrent ``OwnedDLHandle`` objects map to a single loaded image.
-    ``RTLD.NODELETE`` ensures ``dlclose`` is a no-op: the library stays
-    resident for the process lifetime even as ``Sqlite3FFI`` instances
-    are created and destroyed per-request.
+    The function pointers are plain addresses, so an instance is cheap to
+    copy.  ``Database`` loads the library once and hands a copy to every
+    ``Statement`` and ``Transaction`` it creates, so ``prepare()`` and
+    ``transaction()`` do no ``dlopen``/``dlsym`` work.  ``RTLD.NODELETE``
+    keeps the library resident for the process lifetime, so the handle
+    used to resolve the symbols does not need to outlive ``__init__``.
 
     Example::
 
@@ -143,8 +143,6 @@ struct Sqlite3FFI(Movable):
         ffi.exec(db, "CREATE TABLE t (x INTEGER)")
         _ = ffi.close(db)
     """
-
-    var _lib: OwnedDLHandle
 
     # -- connection functions ------------------------------------------------
     var _fn_open: def(Int, Int) thin abi("C") -> Int32
@@ -192,67 +190,67 @@ struct Sqlite3FFI(Movable):
         # WAL locks, and shared-memory mappings.  This causes "no such
         # table" and SQLITE_CANTOPEN errors on subsequent open() calls.
         # The library stays resident until process exit regardless.
-        self._lib = OwnedDLHandle(path, RTLD.NOW | RTLD.GLOBAL | RTLD.NODELETE)
+        var lib = OwnedDLHandle(path, RTLD.NOW | RTLD.GLOBAL | RTLD.NODELETE)
 
         self._fn_open = _dl_sym[def(Int, Int) thin abi("C") -> Int32](
-            self._lib, "sqlite3_open"
+            lib, "sqlite3_open"
         )
         self._fn_close = _dl_sym[def(Int) thin abi("C") -> Int32](
-            self._lib, "sqlite3_close"
+            lib, "sqlite3_close"
         )
         self._fn_errmsg = _dl_sym[def(Int) thin abi("C") -> Int](
-            self._lib, "sqlite3_errmsg"
+            lib, "sqlite3_errmsg"
         )
         self._fn_exec = _dl_sym[
             def(Int, Int, Int, Int, Int) thin abi("C") -> Int32
-        ](self._lib, "sqlite3_exec")
+        ](lib, "sqlite3_exec")
         self._fn_prepare = _dl_sym[
             def(Int, Int, Int32, Int, Int) thin abi("C") -> Int32
-        ](self._lib, "sqlite3_prepare_v2")
+        ](lib, "sqlite3_prepare_v2")
         self._fn_step = _dl_sym[def(Int) thin abi("C") -> Int32](
-            self._lib, "sqlite3_step"
+            lib, "sqlite3_step"
         )
         self._fn_reset = _dl_sym[def(Int) thin abi("C") -> Int32](
-            self._lib, "sqlite3_reset"
+            lib, "sqlite3_reset"
         )
         self._fn_finalize = _dl_sym[def(Int) thin abi("C") -> Int32](
-            self._lib, "sqlite3_finalize"
+            lib, "sqlite3_finalize"
         )
         self._fn_bind_int = _dl_sym[
             def(Int, Int32, Int) thin abi("C") -> Int32
-        ](self._lib, "sqlite3_bind_int64")
+        ](lib, "sqlite3_bind_int64")
         self._fn_bind_double = _dl_sym[
             def(Int, Int32, Float64) thin abi("C") -> Int32
-        ](self._lib, "sqlite3_bind_double")
+        ](lib, "sqlite3_bind_double")
         self._fn_bind_text = _dl_sym[
             def(Int, Int32, Int, Int32, Int) thin abi("C") -> Int32
-        ](self._lib, "sqlite3_bind_text")
+        ](lib, "sqlite3_bind_text")
         self._fn_bind_null = _dl_sym[def(Int, Int32) thin abi("C") -> Int32](
-            self._lib, "sqlite3_bind_null"
+            lib, "sqlite3_bind_null"
         )
         self._fn_bind_blob = _dl_sym[
             def(Int, Int32, Int, Int32, Int) thin abi("C") -> Int32
-        ](self._lib, "sqlite3_bind_blob")
+        ](lib, "sqlite3_bind_blob")
         self._fn_col_count = _dl_sym[def(Int) thin abi("C") -> Int32](
-            self._lib, "sqlite3_column_count"
+            lib, "sqlite3_column_count"
         )
         self._fn_col_type = _dl_sym[def(Int, Int32) thin abi("C") -> Int32](
-            self._lib, "sqlite3_column_type"
+            lib, "sqlite3_column_type"
         )
         self._fn_col_int64 = _dl_sym[def(Int, Int32) thin abi("C") -> Int](
-            self._lib, "sqlite3_column_int64"
+            lib, "sqlite3_column_int64"
         )
         self._fn_col_double = _dl_sym[def(Int, Int32) thin abi("C") -> Float64](
-            self._lib, "sqlite3_column_double"
+            lib, "sqlite3_column_double"
         )
         self._fn_col_text = _dl_sym[def(Int, Int32) thin abi("C") -> Int](
-            self._lib, "sqlite3_column_text"
+            lib, "sqlite3_column_text"
         )
         self._fn_col_blob = _dl_sym[def(Int, Int32) thin abi("C") -> Int](
-            self._lib, "sqlite3_column_blob"
+            lib, "sqlite3_column_blob"
         )
         self._fn_col_bytes = _dl_sym[def(Int, Int32) thin abi("C") -> Int32](
-            self._lib, "sqlite3_column_bytes"
+            lib, "sqlite3_column_bytes"
         )
 
     # -- connection ----------------------------------------------------------
