@@ -232,11 +232,11 @@ struct Row(Movable):
     def __init__(
         out self,
         ncols: Int,
-        types: List[Int],
-        ints: List[Int],
-        floats: List[Float64],
-        texts: List[String],
-        blobs: List[List[UInt8]],
+        var types: List[Int],
+        var ints: List[Int],
+        var floats: List[Float64],
+        var texts: List[String],
+        var blobs: List[List[UInt8]],
     ):
         """Construct a ``Row`` from pre-read column snapshots.
 
@@ -249,11 +249,11 @@ struct Row(Movable):
             blobs:  Per-column BLOB values (empty for non-BLOB columns).
         """
         self._ncols = ncols
-        self._types = types.copy()
-        self._ints = ints.copy()
-        self._floats = floats.copy()
-        self._texts = texts.copy()
-        self._blobs = blobs.copy()
+        self._types = types^
+        self._ints = ints^
+        self._floats = floats^
+        self._texts = texts^
+        self._blobs = blobs^
 
     def num_cols(self) -> Int:
         """Return the number of columns in this row.
@@ -426,6 +426,60 @@ struct Statement(Movable):
 
     # -- execution -----------------------------------------------------------
 
+    def step_row(self) raises -> Bool:
+        """Advance the statement by one step without copying the row.
+
+        Read the current row with ``column_int``, ``column_text`` and the
+        other ``column_*`` accessors until the next ``step_row()``,
+        ``step()`` or ``reset()``.
+
+        Returns:
+            ``True`` when a result row is available, ``False`` when the
+            statement has finished (``SQLITE_DONE``).
+
+        Raises:
+            Error: If ``sqlite3_step`` returns an error code.
+        """
+        var rc = self._ffi.step(self._handle)
+        if rc == SQLITE_ROW:
+            return True
+        if Int(rc) == 101:  # SQLITE_DONE
+            return False
+        raise Error(
+            "sqlite3_step failed (rc="
+            + String(Int(rc))
+            + "): "
+            + self._ffi.errmsg(self._db)
+        )
+
+    def column_count(self) -> Int:
+        """Number of columns in the current row."""
+        return self._ffi.column_count(self._handle)
+
+    def column_type(self, col: Int) -> Int:
+        """SQLite type code of column ``col`` (0-based) in the current row."""
+        return self._ffi.column_type(self._handle, col)
+
+    def column_is_null(self, col: Int) -> Bool:
+        """Whether column ``col`` of the current row is NULL."""
+        return self._ffi.column_type(self._handle, col) == SQLITE_NULL
+
+    def column_int(self, col: Int) -> Int:
+        """Integer value of column ``col`` of the current row."""
+        return self._ffi.column_int(self._handle, col)
+
+    def column_float(self, col: Int) -> Float64:
+        """Float value of column ``col`` of the current row."""
+        return self._ffi.column_double(self._handle, col)
+
+    def column_text(self, col: Int) -> String:
+        """Text value of column ``col`` of the current row."""
+        return self._ffi.column_text(self._handle, col)
+
+    def column_blob(self, col: Int) -> List[UInt8]:
+        """BLOB value of column ``col`` of the current row."""
+        return self._ffi.column_blob(self._handle, col)
+
     def step(self) raises -> Optional[Row]:
         """Advance the statement by one step.
 
@@ -439,8 +493,7 @@ struct Statement(Movable):
         Raises:
             Error: If ``sqlite3_step`` returns an error code.
         """
-        var rc = self._ffi.step(self._handle)
-        if rc == SQLITE_ROW:
+        if self.step_row():
             var ncols = self._ffi.column_count(self._handle)
             var types = List[Int]()
             var ints = List[Int]()
@@ -470,15 +523,8 @@ struct Statement(Movable):
                     blobs.append(self._ffi.column_blob(self._handle, col))
                 else:
                     blobs.append(List[UInt8]())
-            return Row(ncols, types, ints, floats, texts, blobs)
-        if Int(rc) == 101:  # SQLITE_DONE
-            return None
-        raise Error(
-            "sqlite3_step failed (rc="
-            + String(Int(rc))
-            + "): "
-            + self._ffi.errmsg(self._db)
-        )
+            return Row(ncols, types^, ints^, floats^, texts^, blobs^)
+        return None
 
 
 # -----------------------------------------------------------------------

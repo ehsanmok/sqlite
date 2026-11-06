@@ -1008,6 +1008,40 @@ def test_many_prepare_and_transaction_cycles() raises:
 
 
 # -----------------------------------------------------------------------
+# step_row and column accessors
+# -----------------------------------------------------------------------
+
+
+def test_step_row_matches_step() raises:
+    """``step_row()`` + ``column_*`` read the same values as ``step()``."""
+    var db = Database(":memory:")
+    db.execute("CREATE TABLE t (i INTEGER, f REAL, s TEXT, b BLOB, n TEXT)")
+    var ins = db.prepare("INSERT INTO t VALUES (?, ?, ?, ?, NULL)")
+    var blob = List[UInt8]()
+    blob.append(0)
+    blob.append(255)
+    ins.bind_int(1, -42)
+    ins.bind_float(2, 2.5)
+    ins.bind_text(3, "héllo")
+    ins.bind_blob(4, blob)
+    _ = ins.step()
+
+    var a = db.prepare("SELECT i, f, s, b, n FROM t")
+    ref row = a.step().value()
+    var b = db.prepare("SELECT i, f, s, b, n FROM t")
+    assert_true(b.step_row())
+    assert_equal(b.column_count(), 5)
+    assert_equal(b.column_int(0), row.int_val(0))
+    assert_equal(b.column_float(1), row.float_val(1))
+    assert_equal(b.column_text(2), row.text_val(2))
+    assert_equal(len(b.column_blob(3)), 2)
+    assert_equal(b.column_blob(3)[1], row.blob_val(3)[1])
+    assert_true(b.column_is_null(4))
+    assert_false(b.column_is_null(0))
+    assert_false(b.step_row())
+
+
+# -----------------------------------------------------------------------
 # Main
 # -----------------------------------------------------------------------
 
@@ -1162,5 +1196,9 @@ def main() raises:
     # Shared FFI
     test_many_prepare_and_transaction_cycles()
     print("test_many_prepare_and_transaction_cycles PASSED")
+
+    # step_row and column accessors
+    test_step_row_matches_step()
+    print("test_step_row_matches_step               PASSED")
 
     print("\nAll db tests passed.")
