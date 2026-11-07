@@ -134,6 +134,10 @@ while q.step_row():
     print(q.column_int(0), q.column_text(1))
 ```
 
+`append_column_text(col, out)` copies a text column straight into a
+`List[UInt8]`, which suits building a response body without a `String` per
+column.
+
 Open with explicit flags and a busy timeout for file databases shared by
 several connections (use one `Database` per thread or worker):
 

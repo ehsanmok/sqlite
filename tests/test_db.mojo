@@ -27,6 +27,7 @@ Coverage:
 - Column count via ``num_cols``
 - Shared FFI: many ``prepare()`` / ``transaction()`` cycles from one Database
 - ``step_row()`` and ``column_*`` accessors match ``step()`` / ``Row``
+- ``append_column_text`` appends raw bytes (non-empty, empty, NULL)
 - ``open_v2`` flags (read-only, no-create), ``busy_timeout``, ``clear_bindings``
 """
 
@@ -1047,6 +1048,24 @@ def test_step_row_matches_step() raises:
     assert_false(b.step_row())
 
 
+def test_append_column_text() raises:
+    """``append_column_text`` appends raw bytes; NULL and empty add nothing."""
+    var db = Database(":memory:")
+    db.execute("CREATE TABLE t (s TEXT, e TEXT, n TEXT)")
+    var ins = db.prepare("INSERT INTO t VALUES (?, '', NULL)")
+    ins.bind_text(1, 'h\u00e9llo "q"')
+    _ = ins.step()
+
+    var q = db.prepare("SELECT s, e, n FROM t")
+    assert_true(q.step_row())
+    var out = List[UInt8]()
+    out.append(33)
+    q.append_column_text(0, out)
+    q.append_column_text(1, out)
+    q.append_column_text(2, out)
+    assert_equal(String(unsafe_from_utf8=out), '!h\u00e9llo "q"')
+
+
 # -----------------------------------------------------------------------
 # open_v2 flags, busy_timeout, clear_bindings
 # -----------------------------------------------------------------------
@@ -1155,6 +1174,9 @@ def main() raises:
     print("test_prepare_and_step_row            PASSED")
     test_num_cols()
     print("test_num_cols                        PASSED")
+
+    test_append_column_text()
+    print("test_append_column_text              PASSED")
 
     # NULL
     test_row_is_null()

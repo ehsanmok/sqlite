@@ -489,6 +489,20 @@ struct Statement(Movable):
         """Text value of column ``col`` of the current row."""
         return self._ffi.column_text(self._handle, col)
 
+    def append_column_text(self, col: Int, mut out: List[UInt8]):
+        """Append the raw UTF-8 bytes of text column ``col`` to ``out``.
+
+        Zero-intermediate-copy alternative to ``column_text`` for callers that
+        build a byte buffer (for example a JSON response): one bulk copy
+        straight from SQLite's row buffer. Appends nothing for SQL NULL.
+        """
+        var addr = self._ffi.column_text_addr(self._handle, col)
+        var n = self._ffi.column_text_len(self._handle, col)
+        if addr == 0 or n == 0:
+            return
+        var p = Pointer[UInt8, MutUntrackedOrigin](unsafe_from_address=addr)
+        out.extend(Span[UInt8, MutUntrackedOrigin](unsafe_ptr=p, length=n))
+
     def column_blob(self, col: Int) -> List[UInt8]:
         """BLOB value of column ``col`` of the current row."""
         return self._ffi.column_blob(self._handle, col)

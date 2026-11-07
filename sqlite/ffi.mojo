@@ -637,6 +637,19 @@ struct Sqlite3FFI(Copyable):
         """
         return _ptr_to_string(self._fn_col_text(stmt, Int32(col)))
 
+    def column_text_addr(self, stmt: Int, col: Int) abi("C") -> Int:
+        """Address of the UTF-8 text of column ``col`` (0 for SQL NULL).
+
+        Valid until the next ``step``/``reset``/``finalize`` on ``stmt``.
+        Call ``column_text_len`` *after* this (SQLite's documented order).
+        """
+        return self._fn_col_text(stmt, Int32(col))
+
+    def column_text_len(self, stmt: Int, col: Int) abi("C") -> Int:
+        """Byte length of the text of column ``col`` (call after ``column_text_addr``).
+        """
+        return Int(self._fn_col_bytes(stmt, Int32(col)))
+
     def column_blob(self, stmt: Int, col: Int) -> List[UInt8]:
         """Read a BLOB column value (0-based index).
 
